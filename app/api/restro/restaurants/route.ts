@@ -1,16 +1,17 @@
 import { errorResponse } from "@/lib/api-response";
 import {
-  createRestaurant,
-  ensureRestroSchema,
-  listRestaurants,
-} from "@/lib/restro-data";
+  ensureRestroAuthSchema,
+  listRestaurantAccounts,
+  parseRestaurantRegistrationPayload,
+  registerRestaurantAccount,
+} from "@/lib/restro-auth";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    await ensureRestroSchema();
-    const restaurants = await listRestaurants();
+    await ensureRestroAuthSchema();
+    const restaurants = await listRestaurantAccounts();
 
     return Response.json({
       ok: true,
@@ -23,18 +24,10 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await ensureRestroSchema();
-    const body = (await request.json()) as {
-      name?: unknown;
-      city?: unknown;
-      slug?: unknown;
-    };
-
-    const restaurant = await createRestaurant({
-      name: body.name,
-      city: body.city,
-      slug: body.slug,
-    });
+    await ensureRestroAuthSchema();
+    const body = await request.json();
+    const payload = parseRestaurantRegistrationPayload(body);
+    const restaurant = await registerRestaurantAccount(payload);
 
     return Response.json(
       {

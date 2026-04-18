@@ -1,16 +1,16 @@
 import { errorResponse } from "@/lib/api-response";
-import { ensureRestroSchema, listRestaurants } from "@/lib/restro-data";
+import { ensureRestroAuthSchema, listRestaurantAccounts } from "@/lib/restro-auth";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    await ensureRestroSchema();
-    const restaurants = await listRestaurants();
+    await ensureRestroAuthSchema();
+    const restaurants = await listRestaurantAccounts();
 
     return Response.json({
       ok: true,
-      message: "Schema is ready.",
+      message: "Restaurant onboarding schema is ready.",
       restaurants,
     });
   } catch (error) {

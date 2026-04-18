@@ -1,36 +1,39 @@
 import Link from "next/link";
 
 export default function Home() {
-  const appCards = [
+  const highlights = [
     {
-      title: "foodisthan-customer",
+      title: "For Customers",
+      subtitle: "Fast ordering",
+      points: [
+        "Browse cuisines and categories",
+        "Choose variants and add-ons",
+        "Get offers and live availability",
+      ],
       route: "/customer",
-      badge: "Flutter App",
-      points: [
-        "Browse parent/sub categories",
-        "View item variants and add-ons",
-        "See live offers with date-time windows",
-      ],
+      cta: "Explore Menu",
     },
     {
-      title: "foodisthan-restro",
+      title: "For Restaurants",
+      subtitle: "Full control",
+      points: [
+        "Register business with tax details",
+        "Manage menu, stock, and pricing",
+        "Run time-based offers instantly",
+      ],
       route: "/restro/login",
-      badge: "Flutter + Web Portal",
-      points: [
-        "Manage categories and sub categories",
-        "Add/edit item stock, SKU, pricing",
-        "Configure variants, add-ons and offers",
-      ],
+      cta: "Restaurant Login",
     },
     {
-      title: "foodisthan-delivery",
-      route: "/delivery",
-      badge: "Flutter App",
+      title: "For Delivery",
+      subtitle: "Reliable fulfillment",
       points: [
-        "Assigned order queue",
-        "Pickup and delivery status",
-        "Route and earnings tracking",
+        "Accept and track assigned deliveries",
+        "Pickup and drop status updates",
+        "Daily order and payout visibility",
       ],
+      route: "/delivery",
+      cta: "View Delivery Flow",
     },
   ];
 
@@ -38,29 +41,28 @@ export default function Home() {
     <div className="soft-grid-bg flex flex-1">
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-5 pb-12 pt-10 md:px-8 lg:px-12">
         <section className="glass-panel fade-up p-6 md:p-9">
-          <p className="brand-badge">Foodisthan Commerce Stack</p>
+          <p className="brand-badge">Foodisthan</p>
           <h1 className="mt-4 max-w-3xl text-3xl font-black tracking-tight text-[var(--brand-deep)] md:text-5xl">
-            Zomato-style multi-app base with MySQL APIs and Restro control panel.
+            Delicious food discovery, restaurant growth, and delivery in one place.
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-[#5f3828] md:text-base">
-            This workspace now contains the backend and web portal starter so you can
-            immediately build three Flutter apps: customer browsing, restaurant
-            operations, and delivery execution.
+            Foodisthan connects hungry customers, smart restaurant teams, and
+            dependable delivery partners through one smooth ordering experience.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link href="/restro/login" className="food-btn">
-              Open Restro Login
+              Start Restaurant Onboarding
             </Link>
             <Link href="/customer" className="food-btn-outline">
-              Preview Customer Menu
+              Browse Customer Menu
             </Link>
           </div>
         </section>
 
         <section className="fade-up-delay grid gap-5 md:grid-cols-3">
-          {appCards.map((card) => (
+          {highlights.map((card) => (
             <article key={card.title} className="elevated-card p-5">
-              <p className="status-pill">{card.badge}</p>
+              <p className="status-pill">{card.subtitle}</p>
               <h2 className="mt-3 text-xl font-bold text-[var(--brand-deep)]">
                 {card.title}
               </h2>
@@ -75,23 +77,23 @@ export default function Home() {
                 href={card.route}
                 className="mt-5 inline-flex text-sm font-semibold text-[var(--brand)]"
               >
-                Explore module -&gt;
+                {card.cta} -&gt;
               </Link>
             </article>
           ))}
         </section>
 
         <section className="glass-panel p-6 md:p-8">
-          <h3 className="section-title text-[var(--brand-deep)]">Build Sequence</h3>
+          <h3 className="section-title text-[var(--brand-deep)]">Why Foodisthan</h3>
           <div className="mt-4 grid gap-3 text-sm text-[#643f30] md:grid-cols-3">
             <p className="rounded-xl bg-[#fff5e8] px-4 py-3">
-              1. Use Restro Login to bootstrap schema and create your restaurants.
+              Smart catalog controls with category, variant, and add-on management.
             </p>
             <p className="rounded-xl bg-[#fff5e8] px-4 py-3">
-              2. Add categories/items with variants, add-ons, stock, and timed offers.
+              Complete business onboarding with contact, address, and tax details.
             </p>
             <p className="rounded-xl bg-[#fff5e8] px-4 py-3">
-              3. Connect Flutter apps to customer menu and restro CRUD APIs.
+              Unified experience for ordering, operations, and last-mile delivery.
             </p>
           </div>
         </section>
