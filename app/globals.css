@@ -1,26 +1,175 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fff8ef;
+  --foreground: #1f1915;
+  --surface: #fffdf9;
+  --brand: #cf4f10;
+  --brand-deep: #7d2a00;
+  --accent: #0f766e;
+  --line: rgba(125, 42, 0, 0.18);
+  --soft-shadow: 0 14px 40px rgba(120, 39, 0, 0.12);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-sora);
+  --font-mono: var(--font-space-mono);
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at 14% 8%, #ffd6ad 0%, transparent 33%),
+    radial-gradient(circle at 88% 12%, #fff1d8 0%, transparent 30%),
+    linear-gradient(165deg, #fff8ef 0%, #fff1df 48%, #ffe6cc 100%);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sora), "Segoe UI", sans-serif;
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.soft-grid-bg {
+  position: relative;
+}
+
+.soft-grid-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(207, 79, 16, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(207, 79, 16, 0.05) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: radial-gradient(circle at center, black 30%, transparent 92%);
+}
+
+.brand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(8px);
+  padding: 0.35rem 0.9rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.glass-panel {
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 249, 0.86);
+  backdrop-filter: blur(8px);
+  border-radius: 1.25rem;
+  box-shadow: var(--soft-shadow);
+}
+
+.elevated-card {
+  border: 1px solid rgba(125, 42, 0, 0.14);
+  border-radius: 1rem;
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgba(125, 42, 0, 0.08);
+}
+
+.section-title {
+  font-size: clamp(1.2rem, 2vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.food-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.8rem;
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, #df5a18 0%, #bd3704 100%);
+  color: #fffdf8;
+  font-weight: 700;
+  padding: 0.65rem 1rem;
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.food-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(140, 40, 2, 0.2);
+}
+
+.food-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.food-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.8rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--brand-deep);
+  font-weight: 700;
+  padding: 0.65rem 1rem;
+}
+
+.food-input,
+.food-select,
+.food-textarea {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(125, 42, 0, 0.22);
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0.62rem 0.74rem;
+  font-size: 0.92rem;
+  color: var(--foreground);
+}
+
+.food-textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.food-input:focus,
+.food-select:focus,
+.food-textarea:focus {
+  outline: 2px solid rgba(207, 79, 16, 0.45);
+  border-color: rgba(207, 79, 16, 0.6);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.14);
+  color: #0f5f59;
+  font-weight: 700;
+  font-size: 0.74rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.fade-up {
+  animation: fadeUp 0.65s ease both;
+}
+
+.fade-up-delay {
+  animation: fadeUp 0.85s ease both;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

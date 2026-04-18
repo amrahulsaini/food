@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Foodisthan Platform Starter
 
-## Getting Started
+This repository is the foundation for a Zomato-style ecosystem with 3 apps:
 
-First, run the development server:
+1. `foodisthan-customer` (Flutter)
+2. `foodisthan-restro` (Flutter + Web portal)
+3. `foodisthan-delivery` (Flutter)
+
+The current codebase includes:
+
+1. MySQL-backed backend APIs in Next.js App Router
+2. Restro login + dashboard web portal for category/item operations
+3. Customer menu preview web page that consumes the same API as Flutter
+
+## Tech Stack
+
+1. Next.js 16 (App Router)
+2. React 19
+3. TypeScript
+4. MySQL (`mysql2`)
+
+## Local Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create `.env.local` using `.env.example` values:
+
+```bash
+DB_HOST=34.133.49.19
+DB_USER=loop_food
+DB_PASSWORD=food
+DB_NAME=loop_food
+DB_PORT=3306
+```
+
+3. Run development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. `http://localhost:3000` (platform home)
+2. `http://localhost:3000/restro/login` (restro admin start)
+3. `http://localhost:3000/customer` (customer feed preview)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Implemented Routes
 
-## Learn More
+1. `app/page.tsx`: platform landing page
+2. `app/restro/login/page.tsx`: restro portal entry and bootstrap
+3. `app/restro/dashboard/page.tsx`: category + item CRUD (variants, add-ons, offers, stock)
+4. `app/customer/page.tsx`: customer menu preview
+5. `app/delivery/page.tsx`: delivery app blueprint page
 
-To learn more about Next.js, take a look at the following resources:
+## API Endpoints
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET`/`POST` | `/api/restro/bootstrap` | Create core schema if missing |
+| `GET` | `/api/restro/restaurants` | List restaurants |
+| `POST` | `/api/restro/restaurants` | Create restaurant |
+| `GET` | `/api/restro/categories?restaurantId=1` | List categories |
+| `POST` | `/api/restro/categories` | Create category |
+| `PUT` | `/api/restro/categories/:id` | Update category |
+| `DELETE` | `/api/restro/categories/:id?restaurantId=1` | Delete category |
+| `GET` | `/api/restro/items?restaurantId=1` | List items |
+| `POST` | `/api/restro/items` | Create item |
+| `PUT` | `/api/restro/items/:id` | Update item |
+| `DELETE` | `/api/restro/items/:id?restaurantId=1` | Delete item |
+| `GET` | `/api/customer/menu?restaurantId=1` | Customer-ready nested menu feed |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## MySQL Data Model
 
-## Deploy on Vercel
+Schema bootstrap creates these tables:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. `restaurants`
+2. `categories` (supports parent categories via `parent_category_id`)
+3. `items`
+4. `item_variants`
+5. `item_addons`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The `items` table currently supports:
+
+1. Base price
+2. Stock quantity
+3. SKU
+4. Veg/non-veg
+5. Availability toggle
+6. Offer title
+7. Offer discount percent
+8. Offer start/end datetime
+
+## Flutter App Design Plan
+
+### 1) `foodisthan-customer`
+
+1. Home screen with category and subcategory rails
+2. Item listing with variants/add-ons and offer badge
+3. Item detail and cart workflow
+4. Data source: `GET /api/customer/menu?restaurantId=<id>`
+
+### 2) `foodisthan-restro`
+
+1. Login/select restaurant
+2. Category manager (create/update/delete)
+3. Item manager with stock, variants, addons, and offer windows
+4. Data source: `/api/restro/*` endpoints
+
+### 3) `foodisthan-delivery`
+
+1. Assigned order queue
+2. Pickup verification
+3. Delivery progress and status updates
+4. Earnings and settlement history
+5. Next phase: add dedicated `/api/delivery/*` routes
+
+## Quality Check
+
+Run lint:
+
+```bash
+npm run lint
+```
+
+The current code passes lint with the implemented changes.

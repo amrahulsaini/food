@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local utility scripts can use Node-style imports.
+    "testing/**",
   ]),
 ]);
 
