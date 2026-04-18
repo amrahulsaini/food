@@ -546,10 +546,12 @@ export default function RestroLoginPage() {
 
                 <div className="grid gap-3 md:grid-cols-3">
                   <div>
-                    <label className="text-sm font-semibold text-[#60372a]">GSTIN</label>
+                    <label className="text-sm font-semibold text-[#60372a]">
+                      GSTIN (Optional)
+                    </label>
                     <input
                       className="food-input"
-                      placeholder="GSTIN"
+                      placeholder="Optional"
                       value={registrationForm.gstin}
                       onChange={(event) => {
                         setRegistrationForm((prev) => ({

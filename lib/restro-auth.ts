@@ -23,7 +23,7 @@ export interface RestaurantAuthProfile {
   businessAddress: string;
   city: string;
   postalCode: string;
-  gstin: string;
+  gstin: string | null;
   sgstPercent: number;
   cgstPercent: number;
   accountStatus: AccountStatus;
@@ -42,7 +42,7 @@ interface RestaurantAuthRow extends RowDataPacket {
   business_address: string;
   city: string;
   postal_code: string;
-  gstin: string;
+  gstin: string | null;
   sgst_percent: string | number;
   cgst_percent: string | number;
   account_status: string;
@@ -71,7 +71,7 @@ export interface RestaurantRegistrationPayload {
   businessAddress: string;
   city: string;
   postalCode: string;
-  gstin: string;
+  gstin: string | null;
   sgstPercent: number;
   cgstPercent: number;
 }
@@ -82,6 +82,11 @@ export interface RestaurantLoginPayload {
 }
 
 let restroAuthSchemaReadyPromise: Promise<void> | null = null;
+
+interface InformationSchemaColumnRow extends RowDataPacket {
+  COLUMN_NAME: string;
+  IS_NULLABLE: "YES" | "NO";
+}
 
 function normalizeName(value: unknown, fieldName: string): string {
   if (typeof value !== "string") {
@@ -153,15 +158,23 @@ function normalizePostalCode(value: unknown): string {
   return normalized;
 }
 
-function normalizeGstin(value: unknown): string {
+function normalizeGstin(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
   if (typeof value !== "string") {
-    throw new InputError("GSTIN is required.");
+    throw new InputError("GSTIN should be text when provided.");
   }
 
   const normalized = value.trim().toUpperCase();
 
+  if (!normalized) {
+    return null;
+  }
+
   if (normalized.length < 8 || normalized.length > 20) {
-    throw new InputError("GSTIN should have 8 to 20 characters.");
+    throw new InputError("GSTIN should have 8 to 20 characters when provided.");
   }
 
   return normalized;
@@ -230,7 +243,7 @@ function mapRestaurantProfile(row: RestaurantAuthRow): RestaurantAuthProfile {
     businessAddress: row.business_address,
     city: row.city,
     postalCode: row.postal_code,
-    gstin: row.gstin,
+    gstin: row.gstin ? String(row.gstin).trim() || null : null,
     sgstPercent: Number.parseFloat(String(row.sgst_percent)),
     cgstPercent: Number.parseFloat(String(row.cgst_percent)),
     accountStatus: normalizeStatus(row.account_status),
@@ -316,7 +329,7 @@ async function runRestroAuthSchemaSetup(): Promise<void> {
       business_address TEXT NOT NULL,
       city VARCHAR(80) NOT NULL,
       postal_code VARCHAR(20) NOT NULL,
-      gstin VARCHAR(30) NOT NULL,
+      gstin VARCHAR(30) NULL,
       sgst_percent DECIMAL(5,2) NOT NULL,
       cgst_percent DECIMAL(5,2) NOT NULL,
       account_status ENUM('approved','suspended','rejected','on_hold') NOT NULL DEFAULT 'on_hold',
@@ -331,6 +344,155 @@ async function runRestroAuthSchemaSetup(): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
 
+  const readColumns = async (): Promise<InformationSchemaColumnRow[]> =>
+    await query<InformationSchemaColumnRow[]>(
+      `SELECT COLUMN_NAME, IS_NULLABLE
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'restaurant_accounts'`
+    );
+
+  let columns = await readColumns();
+  const hasColumn = (columnName: string): boolean =>
+    columns.some((row) => row.COLUMN_NAME === columnName);
+  const isNullable = (columnName: string): boolean =>
+    columns.find((row) => row.COLUMN_NAME === columnName)?.IS_NULLABLE === "YES";
+
+  if (!hasColumn("owner_mobile")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      ADD COLUMN owner_mobile VARCHAR(20) NULL
+      AFTER owner_name
+    `);
+    columns = await readColumns();
+  }
+
+  if (!hasColumn("owner_email")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      ADD COLUMN owner_email VARCHAR(160) NULL
+      AFTER owner_mobile
+    `);
+    columns = await readColumns();
+  }
+
+  if (!hasColumn("business_address")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      ADD COLUMN business_address TEXT NULL
+      AFTER password_hash
+    `);
+    columns = await readColumns();
+  }
+
+  if (!hasColumn("postal_code")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      ADD COLUMN postal_code VARCHAR(20) NULL
+      AFTER city
+    `);
+    columns = await readColumns();
+  }
+
+  if (!hasColumn("gstin")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      ADD COLUMN gstin VARCHAR(30) NULL
+      AFTER postal_code
+    `);
+    columns = await readColumns();
+  }
+
+  if (!hasColumn("sgst_percent")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      ADD COLUMN sgst_percent DECIMAL(5,2) NOT NULL DEFAULT 0
+      AFTER gstin
+    `);
+    columns = await readColumns();
+  }
+
+  if (!hasColumn("cgst_percent")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      ADD COLUMN cgst_percent DECIMAL(5,2) NOT NULL DEFAULT 0
+      AFTER sgst_percent
+    `);
+    columns = await readColumns();
+  }
+
+  if (hasColumn("mobile_number")) {
+    await execute(`
+      UPDATE restaurant_accounts
+      SET owner_mobile = mobile_number
+      WHERE (owner_mobile IS NULL OR owner_mobile = '')
+        AND mobile_number IS NOT NULL
+        AND mobile_number <> ''
+    `);
+  }
+
+  if (hasColumn("email")) {
+    await execute(`
+      UPDATE restaurant_accounts
+      SET owner_email = email
+      WHERE (owner_email IS NULL OR owner_email = '')
+        AND email IS NOT NULL
+        AND email <> ''
+    `);
+  }
+
+  if (hasColumn("address_line1")) {
+    const addressParts = ["address_line1", "address_line2", "landmark"].filter((name) =>
+      hasColumn(name)
+    );
+    const addressExpression = `CONCAT_WS(', ', ${addressParts.join(", ")})`;
+    const sourceHasData = addressParts
+      .map((name) => `${name} IS NOT NULL AND ${name} <> ''`)
+      .join(" OR ");
+
+    await execute(`
+      UPDATE restaurant_accounts
+      SET business_address = ${addressExpression}
+      WHERE (business_address IS NULL OR business_address = '')
+        AND (${sourceHasData})
+    `);
+  }
+
+  if (hasColumn("pincode")) {
+    await execute(`
+      UPDATE restaurant_accounts
+      SET postal_code = pincode
+      WHERE (postal_code IS NULL OR postal_code = '')
+        AND pincode IS NOT NULL
+        AND pincode <> ''
+    `);
+  }
+
+  columns = await readColumns();
+
+  if (hasColumn("gstin") && !isNullable("gstin")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN gstin VARCHAR(30) NULL
+    `);
+    columns = await readColumns();
+  }
+
+  if (hasColumn("owner_mobile") && !isNullable("owner_mobile")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN owner_mobile VARCHAR(20) NULL
+    `);
+    columns = await readColumns();
+  }
+
+  if (hasColumn("owner_email") && !isNullable("owner_email")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN owner_email VARCHAR(160) NULL
+    `);
+  }
+
   const statusColumnRows = await query<Array<RowDataPacket & { total: number }>>(
     `SELECT COUNT(*) AS total
      FROM INFORMATION_SCHEMA.COLUMNS
@@ -343,10 +505,34 @@ async function runRestroAuthSchemaSetup(): Promise<void> {
     await execute(`
       ALTER TABLE restaurant_accounts
       ADD COLUMN account_status ENUM('approved','suspended','rejected','on_hold')
-      NOT NULL DEFAULT 'on_hold'
+      NULL DEFAULT 'on_hold'
       AFTER cgst_percent
     `);
   }
+
+  await execute(`
+    UPDATE restaurant_accounts
+    SET owner_mobile = 'NA'
+    WHERE owner_mobile IS NULL OR owner_mobile = ''
+  `);
+
+  await execute(`
+    UPDATE restaurant_accounts
+    SET owner_email = CONCAT('restro-', restaurant_id, '@foodisthan.local')
+    WHERE owner_email IS NULL OR owner_email = ''
+  `);
+
+  await execute(`
+    UPDATE restaurant_accounts
+    SET business_address = 'Address not provided'
+    WHERE business_address IS NULL OR business_address = ''
+  `);
+
+  await execute(`
+    UPDATE restaurant_accounts
+    SET postal_code = '000000'
+    WHERE postal_code IS NULL OR postal_code = ''
+  `);
 
   await execute(`
     UPDATE restaurant_accounts
