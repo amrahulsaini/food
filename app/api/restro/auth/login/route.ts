@@ -3,7 +3,7 @@ import {
   ensureRestroAuthSchema,
   loginRestaurantAccount,
   parseRestaurantLoginPayload,
-} from "@/lib/restro-auth";
+} from "@/lib/restroAuth";
 
 export const runtime = "nodejs";
 

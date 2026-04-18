@@ -1,5 +1,5 @@
 import { errorResponse } from "@/lib/api-response";
-import { ensureRestroAuthSchema, listRestaurantAccounts } from "@/lib/restro-auth";
+import { ensureRestroAuthSchema, listRestaurantAccounts } from "@/lib/restroAuth";
 
 export const runtime = "nodejs";
 

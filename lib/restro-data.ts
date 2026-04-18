@@ -19,6 +19,7 @@ export interface Restaurant {
   id: number;
   name: string;
   slug: string;
+  imageUrl: string | null;
   city: string | null;
   isOpen: boolean;
   createdAt: string | null;
@@ -132,11 +133,14 @@ interface RestaurantRow extends RowDataPacket {
   id: number;
   name: string;
   slug: string;
+  image_url: string | null;
   city: string | null;
   is_open: number;
   created_at: Date | string | null;
   updated_at: Date | string | null;
 }
+
+let restroSchemaReadyPromise: Promise<void> | null = null;
 
 interface CategoryRow extends RowDataPacket {
   id: number;
@@ -362,6 +366,7 @@ function mapRestaurant(row: RestaurantRow): Restaurant {
     id: row.id,
     name: row.name,
     slug: row.slug,
+    imageUrl: row.image_url,
     city: row.city,
     isOpen: row.is_open === 1,
     createdAt: toIso(row.created_at),
@@ -578,12 +583,13 @@ async function replaceAddons(
   }
 }
 
-export async function ensureRestroSchema(): Promise<void> {
+async function runRestroSchemaSetup(): Promise<void> {
   await execute(`
     CREATE TABLE IF NOT EXISTS restaurants (
       id BIGINT NOT NULL AUTO_INCREMENT,
       name VARCHAR(150) NOT NULL,
       slug VARCHAR(160) NOT NULL,
+      image_url VARCHAR(500) NULL,
       phone VARCHAR(25) NULL,
       email VARCHAR(120) NULL,
       address TEXT NULL,
@@ -597,6 +603,22 @@ export async function ensureRestroSchema(): Promise<void> {
       UNIQUE KEY uniq_restaurant_slug (slug)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
+
+  const rows = await query<Array<RowDataPacket & { total: number }>>(
+    `SELECT COUNT(*) AS total
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'restaurants'
+       AND COLUMN_NAME = 'image_url'`
+  );
+
+  if ((rows[0]?.total ?? 0) === 0) {
+    await execute(`
+      ALTER TABLE restaurants
+      ADD COLUMN image_url VARCHAR(500) NULL
+      AFTER slug
+    `);
+  }
 
   await execute(`
     CREATE TABLE IF NOT EXISTS categories (
@@ -695,17 +717,22 @@ export async function ensureRestroSchema(): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
 
-  await execute(
-    `INSERT INTO restaurants (name, slug, city)
-      VALUES (?, ?, ?)
-      ON DUPLICATE KEY UPDATE name = VALUES(name), city = VALUES(city)`,
-    ["Foodisthan Demo Restaurant", "foodisthan-demo-restaurant", "Kolkata"]
-  );
+}
+
+export async function ensureRestroSchema(): Promise<void> {
+  if (!restroSchemaReadyPromise) {
+    restroSchemaReadyPromise = runRestroSchemaSetup().catch((error) => {
+      restroSchemaReadyPromise = null;
+      throw error;
+    });
+  }
+
+  await restroSchemaReadyPromise;
 }
 
 export async function listRestaurants(): Promise<Restaurant[]> {
   const rows = await query<RestaurantRow[]>(
-    `SELECT id, name, slug, city, is_open, created_at, updated_at
+    `SELECT id, name, slug, image_url, city, is_open, created_at, updated_at
      FROM restaurants
      ORDER BY id ASC`
   );
@@ -734,7 +761,7 @@ export async function createRestaurant(payload: {
   );
 
   const rows = await query<RestaurantRow[]>(
-    `SELECT id, name, slug, city, is_open, created_at, updated_at
+    `SELECT id, name, slug, image_url, city, is_open, created_at, updated_at
      FROM restaurants
      WHERE slug = ?
      LIMIT 1`,
@@ -1055,7 +1082,7 @@ export async function getCustomerMenu(restaurantId: number): Promise<{
   categories: Array<Category & { items: Item[] }>;
 }> {
   const restaurants = await query<RestaurantRow[]>(
-    `SELECT id, name, slug, city, is_open, created_at, updated_at
+    `SELECT id, name, slug, image_url, city, is_open, created_at, updated_at
      FROM restaurants
      WHERE id = ?
      LIMIT 1`,

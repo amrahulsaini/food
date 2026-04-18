@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useCallback, useMemo, useState } from "react";
+import { FormEvent, Suspense, useCallback, useRef, useState } from "react";
 
 interface Category {
   id: number;
@@ -177,26 +177,71 @@ async function readMessage(response: Response): Promise<string> {
 
 function RestroDashboardContent() {
   const searchParams = useSearchParams();
-  const initialRestaurantId = searchParams.get("restaurantId") ?? "1";
+  const initialRestaurantSlug =
+    searchParams.get("slug")?.trim().toLowerCase() ?? "";
   const ownerName = searchParams.get("owner")?.trim() || "Manager";
+  const toastTimerRef = useRef<number | null>(null);
 
-  const [restaurantIdInput, setRestaurantIdInput] = useState(initialRestaurantId);
-  const [status, setStatus] = useState("Click Sync Data to load menu records.");
+  const [restaurantSlugInput, setRestaurantSlugInput] = useState(initialRestaurantSlug);
+  const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  const [status, setStatus] = useState("Enter restaurant slug and click Sync Data.");
+  const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
 
   const [categoryForm, setCategoryForm] = useState<CategoryForm>(emptyCategoryForm);
+  const [categoryImageFile, setCategoryImageFile] = useState<File | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
 
   const [itemForm, setItemForm] = useState<ItemForm>(emptyItemForm(null));
+  const [itemImageFile, setItemImageFile] = useState<File | null>(null);
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
 
-  const parsedRestaurantId = useMemo(() => {
-    const parsed = Number(restaurantIdInput);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [restaurantIdInput]);
+  function updateStatus(message: string): void {
+    setStatus(message);
+    setToast(message);
+
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 3000);
+  }
+
+  const resolveRestaurantId = useCallback(async (slugValue: string): Promise<number> => {
+    const slug = slugValue.trim().toLowerCase();
+
+    if (!/^[a-z0-9]{6,8}$/.test(slug)) {
+      throw new Error("Enter a valid 6 to 8 character alphanumeric restaurant slug.");
+    }
+
+    const response = await fetch(`/api/restro/restaurants?slug=${encodeURIComponent(slug)}`, {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(await readMessage(response));
+    }
+
+    const payload = (await response.json()) as {
+      restaurant?: {
+        restaurantId?: number;
+      };
+    };
+
+    const id = payload.restaurant?.restaurantId;
+
+    if (!id || !Number.isFinite(id)) {
+      throw new Error("Unable to resolve restaurant by slug.");
+    }
+
+    return Number(id);
+  }, []);
 
   const loadData = useCallback(async (restaurantId: number) => {
     setLoading(true);
@@ -231,7 +276,7 @@ function RestroDashboardContent() {
 
       setCategories(categoryList);
       setItems(itemList);
-      setStatus("Dashboard synced with latest menu data.");
+      updateStatus("Dashboard synced with latest menu data.");
 
       setItemForm((prev) => {
         const fallbackCategory = categoryList[0]?.id ?? null;
@@ -246,30 +291,64 @@ function RestroDashboardContent() {
         };
       });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to load dashboard data.");
+      updateStatus(error instanceof Error ? error.message : "Unable to load dashboard data.");
     } finally {
       setLoading(false);
     }
   }, []);
 
   async function refreshData(): Promise<void> {
-    if (!parsedRestaurantId) {
-      setStatus("Enter a valid restaurantId.");
-      return;
+    try {
+      const resolvedRestaurantId = await resolveRestaurantId(restaurantSlugInput);
+      setRestaurantId(resolvedRestaurantId);
+      await loadData(resolvedRestaurantId);
+    } catch (error) {
+      updateStatus(error instanceof Error ? error.message : "Unable to sync dashboard.");
+    }
+  }
+
+  async function uploadImageForCurrentSlug(file: File): Promise<string> {
+    const normalizedSlug = restaurantSlugInput.trim().toLowerCase();
+
+    if (!/^[a-z0-9]{6,8}$/.test(normalizedSlug)) {
+      throw new Error("Sync with a valid restaurant slug before uploading images.");
     }
 
-    await loadData(parsedRestaurantId);
+    const formData = new FormData();
+    formData.append("slug", normalizedSlug);
+    formData.append("file", file);
+
+    const response = await fetch("/api/restro/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(await readMessage(response));
+    }
+
+    const payload = (await response.json()) as { imageUrl?: string };
+
+    if (!payload.imageUrl) {
+      throw new Error("Image upload failed.");
+    }
+
+    return payload.imageUrl;
   }
 
   async function submitCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!parsedRestaurantId) {
-      setStatus("Enter a valid restaurantId before saving category.");
+    if (!restaurantId) {
+      updateStatus("Sync data with a valid restaurant slug before saving category.");
       return;
     }
 
     try {
+      const uploadedImageUrl = categoryImageFile
+        ? await uploadImageForCurrentSlug(categoryImageFile)
+        : categoryForm.imageUrl;
+
       const endpoint = editingCategoryId
         ? `/api/restro/categories/${editingCategoryId}`
         : "/api/restro/categories";
@@ -281,8 +360,9 @@ function RestroDashboardContent() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          restaurantId: parsedRestaurantId,
+          restaurantId,
           ...categoryForm,
+          imageUrl: uploadedImageUrl,
           parentCategoryId: categoryForm.parentCategoryId,
         }),
       });
@@ -292,17 +372,18 @@ function RestroDashboardContent() {
       }
 
       setCategoryForm(emptyCategoryForm);
+      setCategoryImageFile(null);
       setEditingCategoryId(null);
-      await loadData(parsedRestaurantId);
-      setStatus(editingCategoryId ? "Category updated." : "Category created.");
+      await loadData(restaurantId);
+      updateStatus(editingCategoryId ? "Category updated." : "Category created.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to save category.");
+      updateStatus(error instanceof Error ? error.message : "Unable to save category.");
     }
   }
 
   async function removeCategory(categoryId: number): Promise<void> {
-    if (!parsedRestaurantId) {
-      setStatus("Enter a valid restaurantId.");
+    if (!restaurantId) {
+      updateStatus("Sync data with a valid restaurant slug before deleting category.");
       return;
     }
 
@@ -313,7 +394,7 @@ function RestroDashboardContent() {
 
     try {
       const response = await fetch(
-        `/api/restro/categories/${categoryId}?restaurantId=${parsedRestaurantId}`,
+        `/api/restro/categories/${categoryId}?restaurantId=${restaurantId}`,
         {
           method: "DELETE",
         }
@@ -323,10 +404,10 @@ function RestroDashboardContent() {
         throw new Error(await readMessage(response));
       }
 
-      await loadData(parsedRestaurantId);
-      setStatus("Category deleted.");
+      await loadData(restaurantId);
+      updateStatus("Category deleted.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to delete category.");
+      updateStatus(error instanceof Error ? error.message : "Unable to delete category.");
     }
   }
 
@@ -340,18 +421,19 @@ function RestroDashboardContent() {
       sortOrder: category.sortOrder,
       isActive: category.isActive,
     });
+    setCategoryImageFile(null);
   }
 
   async function submitItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!parsedRestaurantId) {
-      setStatus("Enter a valid restaurantId before saving item.");
+    if (!restaurantId) {
+      updateStatus("Sync data with a valid restaurant slug before saving item.");
       return;
     }
 
     if (!itemForm.categoryId) {
-      setStatus("Choose a category for the item.");
+      updateStatus("Choose a category for the item.");
       return;
     }
 
@@ -370,6 +452,10 @@ function RestroDashboardContent() {
       }));
 
     try {
+      const uploadedImageUrl = itemImageFile
+        ? await uploadImageForCurrentSlug(itemImageFile)
+        : itemForm.imageUrl;
+
       const endpoint = editingItemId ? `/api/restro/items/${editingItemId}` : "/api/restro/items";
       const method = editingItemId ? "PUT" : "POST";
 
@@ -379,11 +465,11 @@ function RestroDashboardContent() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          restaurantId: parsedRestaurantId,
+          restaurantId,
           categoryId: itemForm.categoryId,
           name: itemForm.name,
           description: itemForm.description,
-          imageUrl: itemForm.imageUrl,
+          imageUrl: uploadedImageUrl,
           basePrice: itemForm.basePrice,
           stockQty: itemForm.stockQty,
           sku: itemForm.sku,
@@ -403,17 +489,18 @@ function RestroDashboardContent() {
       }
 
       setEditingItemId(null);
+      setItemImageFile(null);
       setItemForm(emptyItemForm(categories[0]?.id ?? null));
-      await loadData(parsedRestaurantId);
-      setStatus(editingItemId ? "Item updated." : "Item created.");
+      await loadData(restaurantId);
+      updateStatus(editingItemId ? "Item updated." : "Item created.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to save item.");
+      updateStatus(error instanceof Error ? error.message : "Unable to save item.");
     }
   }
 
   async function removeItem(itemId: number): Promise<void> {
-    if (!parsedRestaurantId) {
-      setStatus("Enter a valid restaurantId.");
+    if (!restaurantId) {
+      updateStatus("Sync data with a valid restaurant slug before deleting item.");
       return;
     }
 
@@ -424,7 +511,7 @@ function RestroDashboardContent() {
 
     try {
       const response = await fetch(
-        `/api/restro/items/${itemId}?restaurantId=${parsedRestaurantId}`,
+        `/api/restro/items/${itemId}?restaurantId=${restaurantId}`,
         {
           method: "DELETE",
         }
@@ -434,10 +521,10 @@ function RestroDashboardContent() {
         throw new Error(await readMessage(response));
       }
 
-      await loadData(parsedRestaurantId);
-      setStatus("Item deleted.");
+      await loadData(restaurantId);
+      updateStatus("Item deleted.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to delete item.");
+      updateStatus(error instanceof Error ? error.message : "Unable to delete item.");
     }
   }
 
@@ -480,12 +567,19 @@ function RestroDashboardContent() {
             }))
           : [emptyAddon(0)],
     });
+    setItemImageFile(null);
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
     <div className="soft-grid-bg flex flex-1">
+      {toast ? (
+        <div className="toast-success fixed right-4 top-4 z-40 max-w-md px-4 py-3 text-sm font-semibold text-[#124f2d] shadow-lg">
+          {toast}
+        </div>
+      ) : null}
+
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 pb-10 pt-8 md:px-8">
         <section className="glass-panel p-5 md:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -509,16 +603,16 @@ function RestroDashboardContent() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-[200px_1fr_auto]">
+          <div className="mt-5 grid gap-3 md:grid-cols-[220px_1fr_auto]">
             <input
               className="food-input"
-              value={restaurantIdInput}
+              value={restaurantSlugInput}
               onChange={(event) => {
-                setRestaurantIdInput(event.target.value);
+                setRestaurantSlugInput(event.target.value.toLowerCase());
               }}
-              placeholder="restaurantId"
+              placeholder="restaurant slug"
             />
-            <p className="rounded-xl bg-[#fff5e7] px-3 py-2 text-sm text-[#70432e]">
+            <p className="rounded-xl bg-[#f8efe8] px-3 py-2 text-sm text-[#68404d]">
               {status}
             </p>
             <button
@@ -526,7 +620,7 @@ function RestroDashboardContent() {
               className="food-btn"
               onClick={() => {
                 refreshData().catch(() => {
-                  setStatus("Unable to sync dashboard.");
+                  updateStatus("Unable to sync dashboard.");
                 });
               }}
               disabled={loading}
@@ -605,17 +699,24 @@ function RestroDashboardContent() {
                 />
               </div>
 
-              <input
-                className="food-input"
-                placeholder="Image URL"
-                value={categoryForm.imageUrl}
-                onChange={(event) => {
-                  setCategoryForm((prev) => ({
-                    ...prev,
-                    imageUrl: event.target.value,
-                  }));
-                }}
-              />
+              <div className="space-y-2">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="food-input"
+                  onChange={(event) => {
+                    const selectedFile = event.target.files?.[0] ?? null;
+                    setCategoryImageFile(selectedFile);
+                  }}
+                />
+                <p className="text-xs text-[#7a4d3a]">
+                  {categoryImageFile
+                    ? `Selected image: ${categoryImageFile.name}`
+                    : categoryForm.imageUrl
+                      ? "Existing category image will be kept unless you upload a new one."
+                      : "Upload category image (optional)."}
+                </p>
+              </div>
 
               <label className="inline-flex items-center gap-2 text-sm text-[#623729]">
                 <input
@@ -642,6 +743,7 @@ function RestroDashboardContent() {
                     onClick={() => {
                       setEditingCategoryId(null);
                       setCategoryForm(emptyCategoryForm);
+                      setCategoryImageFile(null);
                     }}
                   >
                     Cancel Edit
@@ -682,7 +784,7 @@ function RestroDashboardContent() {
                           className="food-btn-outline"
                           onClick={() => {
                             removeCategory(category.id).catch(() => {
-                              setStatus("Unable to delete category.");
+                              updateStatus("Unable to delete category.");
                             });
                           }}
                         >
@@ -744,17 +846,24 @@ function RestroDashboardContent() {
                 }}
               />
 
-              <input
-                className="food-input"
-                placeholder="Image URL"
-                value={itemForm.imageUrl}
-                onChange={(event) => {
-                  setItemForm((prev) => ({
-                    ...prev,
-                    imageUrl: event.target.value,
-                  }));
-                }}
-              />
+              <div className="space-y-2">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="food-input"
+                  onChange={(event) => {
+                    const selectedFile = event.target.files?.[0] ?? null;
+                    setItemImageFile(selectedFile);
+                  }}
+                />
+                <p className="text-xs text-[#7a4d3a]">
+                  {itemImageFile
+                    ? `Selected image: ${itemImageFile.name}`
+                    : itemForm.imageUrl
+                      ? "Existing item image will be kept unless you upload a new one."
+                      : "Upload item image (optional)."}
+                </p>
+              </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <input
@@ -1109,6 +1218,7 @@ function RestroDashboardContent() {
                     onClick={() => {
                       setEditingItemId(null);
                       setItemForm(emptyItemForm(categories[0]?.id ?? null));
+                      setItemImageFile(null);
                     }}
                   >
                     Cancel Edit
@@ -1152,7 +1262,7 @@ function RestroDashboardContent() {
                           className="food-btn-outline"
                           onClick={() => {
                             removeItem(item.id).catch(() => {
-                              setStatus("Unable to delete item.");
+                              updateStatus("Unable to delete item.");
                             });
                           }}
                         >

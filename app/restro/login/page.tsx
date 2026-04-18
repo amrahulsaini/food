@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 
 type AuthPanel = "login" | "register";
 
 interface RestaurantAuthProfile {
-  restaurantId: number;
+  restaurantSlug: string;
   ownerName: string;
 }
 
@@ -43,13 +43,22 @@ async function readMessage(response: Response): Promise<string> {
   }
 }
 
+function buildBusinessAddress(form: RegistrationFormState): string {
+  return [form.addressLine1, form.addressLine2, form.landmark]
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .join(", ");
+}
+
 export default function RestroLoginPage() {
   const router = useRouter();
+  const toastTimerRef = useRef<number | null>(null);
 
   const [activePanel, setActivePanel] = useState<AuthPanel>("login");
   const [status, setStatus] = useState(
-    "Sign in if already approved by admin, or register your restaurant account."
+    "Sign in if your account is approved, or register with mandatory restaurant image."
   );
+  const [toast, setToast] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
@@ -75,12 +84,27 @@ export default function RestroLoginPage() {
     sgstPercent: "9",
     cgstPercent: "9",
   });
+  const [restaurantImage, setRestaurantImage] = useState<File | null>(null);
+
+  function notify(message: string): void {
+    setStatus(message);
+    setToast(message);
+
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 3200);
+  }
 
   async function submitLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
     setIsSigningIn(true);
-    setStatus("Signing in...");
+    notify("Signing in...");
 
     try {
       const response = await fetch("/api/restro/auth/login", {
@@ -105,15 +129,15 @@ export default function RestroLoginPage() {
         throw new Error("Unable to load restaurant profile.");
       }
 
-      setStatus("Login successful. Opening dashboard...");
+      notify("Login successful. Opening dashboard...");
 
       router.push(
-        `/restro/dashboard?restaurantId=${encodeURIComponent(
-          String(restaurant.restaurantId)
+        `/restro/dashboard?slug=${encodeURIComponent(
+          restaurant.restaurantSlug
         )}&owner=${encodeURIComponent(restaurant.ownerName)}`
       );
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Sign-in failed.");
+      notify(error instanceof Error ? error.message : "Sign-in failed.");
     } finally {
       setIsSigningIn(false);
     }
@@ -123,40 +147,59 @@ export default function RestroLoginPage() {
     event.preventDefault();
 
     if (registrationForm.password !== registrationForm.confirmPassword) {
-      setStatus("Password and confirm password do not match.");
+      notify("Password and confirm password do not match.");
+      return;
+    }
+
+    if (!restaurantImage) {
+      notify("Restaurant image is mandatory for registration.");
+      return;
+    }
+
+    const businessAddress = buildBusinessAddress(registrationForm);
+
+    if (businessAddress.length < 6) {
+      notify("Provide a full business address before submitting.");
       return;
     }
 
     setIsRegistering(true);
-    setStatus("Creating restaurant account...");
+    notify("Creating restaurant account...");
 
     try {
+      const formData = new FormData();
+      formData.append("restaurantName", registrationForm.restaurantName);
+      formData.append("ownerName", registrationForm.ownerName);
+      formData.append("ownerMobile", registrationForm.mobileNumber);
+      formData.append("ownerEmail", registrationForm.email);
+      formData.append("ownerPassword", registrationForm.password);
+      formData.append("businessAddress", businessAddress);
+      formData.append(
+        "city",
+        [registrationForm.city.trim(), registrationForm.state.trim()]
+          .filter((value) => value.length > 0)
+          .join(", ")
+      );
+      formData.append("postalCode", registrationForm.pincode);
+      formData.append("gstin", registrationForm.gstin);
+      formData.append("sgstPercent", registrationForm.sgstPercent);
+      formData.append("cgstPercent", registrationForm.cgstPercent);
+      formData.append("restaurantImage", restaurantImage);
+
       const response = await fetch("/api/restro/restaurants", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          restaurantName: registrationForm.restaurantName,
-          ownerName: registrationForm.ownerName,
-          mobileNumber: registrationForm.mobileNumber,
-          email: registrationForm.email,
-          password: registrationForm.password,
-          addressLine1: registrationForm.addressLine1,
-          addressLine2: registrationForm.addressLine2,
-          landmark: registrationForm.landmark,
-          city: registrationForm.city,
-          state: registrationForm.state,
-          pincode: registrationForm.pincode,
-          gstin: registrationForm.gstin,
-          sgstPercent: registrationForm.sgstPercent,
-          cgstPercent: registrationForm.cgstPercent,
-        }),
+        body: formData,
       });
 
       if (!response.ok) {
         throw new Error(await readMessage(response));
       }
+
+      const payload = (await response.json()) as {
+        restaurant?: RestaurantAuthProfile;
+      };
+
+      const restaurantSlug = payload.restaurant?.restaurantSlug ?? "";
 
       setLoginForm({
         email: registrationForm.email,
@@ -168,13 +211,15 @@ export default function RestroLoginPage() {
         password: "",
         confirmPassword: "",
       }));
-
+      setRestaurantImage(null);
       setActivePanel("login");
-      setStatus(
-        "Registration submitted. Your account is on hold until admin approves it in database."
+      notify(
+        restaurantSlug
+          ? `Registration submitted with slug ${restaurantSlug}. Account stays on hold until admin approves.`
+          : "Registration submitted. Account stays on hold until admin approves."
       );
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Registration failed.");
+      notify(error instanceof Error ? error.message : "Registration failed.");
     } finally {
       setIsRegistering(false);
     }
@@ -182,6 +227,12 @@ export default function RestroLoginPage() {
 
   return (
     <div className="soft-grid-bg flex flex-1">
+      {toast ? (
+        <div className="toast-success fixed right-4 top-4 z-40 max-w-md px-4 py-3 text-sm font-semibold text-[#124f2d] shadow-lg">
+          {toast}
+        </div>
+      ) : null}
+
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-5 pb-12 pt-10 md:px-8">
         <section className="glass-panel p-6 md:p-8">
           <p className="brand-badge">Foodisthan Restro Portal</p>
@@ -192,9 +243,9 @@ export default function RestroLoginPage() {
             New registrations stay on hold until admin sets account status to
             approved. Login works only after approval.
           </p>
-          <div className="mt-4 rounded-xl bg-[#fff3e4] px-4 py-3 text-sm text-[#6f4028]">
+          <p className="mt-4 rounded-xl bg-[#f8efe8] px-4 py-3 text-sm text-[#68404d]">
             {status}
-          </div>
+          </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link href="/" className="food-btn-outline">
               Back Home
@@ -274,7 +325,8 @@ export default function RestroLoginPage() {
                 Register Restaurant
               </h2>
               <p className="mt-1 text-sm text-[#6a3f2c]">
-                Fill all business details. Account status starts as on hold.
+                Fill all business details and upload restaurant image. Account starts
+                on hold.
               </p>
 
               <form className="mt-4 space-y-3" onSubmit={submitRegistration}>
@@ -384,6 +436,21 @@ export default function RestroLoginPage() {
 
                 <div>
                   <label className="text-sm font-semibold text-[#60372a]">
+                    Restaurant Image (mandatory)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="food-input"
+                    onChange={(event) => {
+                      const selectedFile = event.target.files?.[0] ?? null;
+                      setRestaurantImage(selectedFile);
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-semibold text-[#60372a]">
                     Address Line 1
                   </label>
                   <input
@@ -482,7 +549,7 @@ export default function RestroLoginPage() {
                     <label className="text-sm font-semibold text-[#60372a]">GSTIN</label>
                     <input
                       className="food-input"
-                      placeholder="Optional"
+                      placeholder="GSTIN"
                       value={registrationForm.gstin}
                       onChange={(event) => {
                         setRegistrationForm((prev) => ({

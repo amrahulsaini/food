@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 
 async function readMessage(response: Response): Promise<string> {
   try {
@@ -15,18 +15,34 @@ async function readMessage(response: Response): Promise<string> {
 
 export default function RestroAccessPage() {
   const router = useRouter();
+  const toastTimerRef = useRef<number | null>(null);
 
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState(
     "Enter restro access password to continue."
   );
+  const [toast, setToast] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  function notify(message: string): void {
+    setStatus(message);
+    setToast(message);
+
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 3000);
+  }
 
   async function submitAccess(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
     setSubmitting(true);
-    setStatus("Verifying access password...");
+    notify("Verifying access password...");
 
     try {
       const response = await fetch("/api/restro/gate", {
@@ -41,7 +57,7 @@ export default function RestroAccessPage() {
         throw new Error(await readMessage(response));
       }
 
-      setStatus("Access granted. Opening restro portal...");
+      notify("Access granted. Opening restro portal...");
 
       const params = new URLSearchParams(window.location.search);
       const nextPath = params.get("next");
@@ -53,7 +69,7 @@ export default function RestroAccessPage() {
 
       router.push("/restro/login");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to verify access.");
+      notify(error instanceof Error ? error.message : "Unable to verify access.");
     } finally {
       setSubmitting(false);
     }
@@ -61,6 +77,12 @@ export default function RestroAccessPage() {
 
   return (
     <div className="soft-grid-bg flex flex-1">
+      {toast ? (
+        <div className="toast-success fixed right-4 top-4 z-40 max-w-md px-4 py-3 text-sm font-semibold text-[#124f2d] shadow-lg">
+          {toast}
+        </div>
+      ) : null}
+
       <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-5 pb-12 pt-14">
         <section className="glass-panel p-6 md:p-8">
           <p className="brand-badge">Restro Access Control</p>
@@ -72,7 +94,7 @@ export default function RestroAccessPage() {
             restaurant login and management pages.
           </p>
 
-          <div className="mt-4 rounded-xl bg-[#fff3e4] px-4 py-3 text-sm text-[#6f4028]">
+          <div className="mt-4 rounded-xl bg-[#f8efe8] px-4 py-3 text-sm text-[#68404d]">
             {status}
           </div>
 
