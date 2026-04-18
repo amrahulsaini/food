@@ -2,10 +2,10 @@
 
 :root {
   --background: #f9f2ea;
-  --foreground: #241d1e;
+  --foreground: #000000;
   --surface: #fefaf6;
   --brand: #9f586d;
-  --brand-deep: #64384a;
+  --brand-deep: #000000;
   --accent: #0f766e;
   --line: rgba(100, 56, 74, 0.2);
   --soft-shadow: 0 14px 40px rgba(104, 71, 74, 0.14);
@@ -35,6 +35,11 @@ a {
 
 .soft-grid-bg {
   position: relative;
+}
+
+.soft-grid-bg,
+.soft-grid-bg * {
+  color: #000000 !important;
 }
 
 .soft-grid-bg::before {
