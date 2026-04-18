@@ -4,6 +4,14 @@ import { execute, query, withTransaction } from "@/lib/db";
 import { ensureRestroSchema, InputError } from "@/lib/restro-data";
 
 const PASSWORD_KEYLEN = 64;
+const ACCOUNT_STATUS_VALUES = [
+  "approved",
+  "suspended",
+  "rejected",
+  "on_hold",
+] as const;
+
+export type RestaurantAccountStatus = (typeof ACCOUNT_STATUS_VALUES)[number];
 
 interface RestaurantAccountRow extends RowDataPacket {
   restaurant_id: number;
@@ -22,6 +30,7 @@ interface RestaurantAccountRow extends RowDataPacket {
   gstin: string | null;
   sgst_percent: number;
   cgst_percent: number;
+  account_status: string;
   is_open: number;
   created_at: Date | string | null;
   updated_at: Date | string | null;
@@ -49,6 +58,7 @@ export interface RestaurantAuthProfile {
   gstin: string | null;
   sgstPercent: number;
   cgstPercent: number;
+  accountStatus: RestaurantAccountStatus;
   isOpen: boolean;
   createdAt: string | null;
   updatedAt: string | null;
@@ -107,6 +117,36 @@ function toIso(value: Date | string | null): string | null {
   }
 
   return date.toISOString();
+}
+
+function normalizeAccountStatus(value: unknown): RestaurantAccountStatus {
+  if (typeof value !== "string") {
+    return "on_hold";
+  }
+
+  const lowered = value.toLowerCase() as RestaurantAccountStatus;
+
+  if ((ACCOUNT_STATUS_VALUES as readonly string[]).includes(lowered)) {
+    return lowered;
+  }
+
+  return "on_hold";
+}
+
+function statusLoginMessage(status: RestaurantAccountStatus): string {
+  if (status === "approved") {
+    return "Account approved.";
+  }
+
+  if (status === "suspended") {
+    return "Your account is suspended. Please contact admin.";
+  }
+
+  if (status === "rejected") {
+    return "Your account is rejected. Please contact admin.";
+  }
+
+  return "Your account is on hold. Wait for admin approval.";
 }
 
 function toText(value: unknown, fieldName: string, maxLength = 255): string {
@@ -251,6 +291,7 @@ function mapProfile(row: RestaurantAccountRow): RestaurantAuthProfile {
     gstin: row.gstin,
     sgstPercent: row.sgst_percent,
     cgstPercent: row.cgst_percent,
+    accountStatus: normalizeAccountStatus(row.account_status),
     isOpen: row.is_open === 1,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -317,6 +358,7 @@ export async function ensureRestroAuthSchema(): Promise<void> {
       gstin VARCHAR(25) NULL,
       sgst_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
       cgst_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+      account_status VARCHAR(20) NOT NULL DEFAULT 'on_hold',
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -328,6 +370,31 @@ export async function ensureRestroAuthSchema(): Promise<void> {
         REFERENCES restaurants(id)
         ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+
+  const rows = await query<Array<RowDataPacket & { total: number }>>(
+    `SELECT COUNT(*) AS total
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'restaurant_accounts'
+       AND COLUMN_NAME = 'account_status'`
+  );
+
+  if ((rows[0]?.total ?? 0) === 0) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      ADD COLUMN account_status VARCHAR(20) NOT NULL DEFAULT 'on_hold'
+      AFTER cgst_percent
+    `);
+  }
+
+  await execute(`
+    UPDATE restaurant_accounts
+    SET account_status = CASE
+      WHEN LOWER(account_status) IN ('approved', 'suspended', 'rejected', 'on_hold')
+      THEN LOWER(account_status)
+      ELSE 'on_hold'
+    END
   `);
 }
 
@@ -351,6 +418,7 @@ async function getRestaurantProfileById(
             a.gstin,
             a.sgst_percent,
             a.cgst_percent,
+              a.account_status,
             r.is_open,
             a.created_at,
             a.updated_at
@@ -425,8 +493,8 @@ export async function registerRestaurantAccount(
         `INSERT INTO restaurant_accounts
          (restaurant_id, owner_name, mobile_number, email, password_hash,
           address_line1, address_line2, landmark, city, state, pincode, gstin,
-          sgst_percent, cgst_percent)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            sgst_percent, cgst_percent, account_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           insertedRestaurantId,
           payload.ownerName,
@@ -442,6 +510,7 @@ export async function registerRestaurantAccount(
           payload.gstin,
           payload.sgstPercent,
           payload.cgstPercent,
+          "on_hold",
         ]
       );
 
@@ -484,6 +553,7 @@ export async function loginRestaurantAccount(
             a.gstin,
             a.sgst_percent,
             a.cgst_percent,
+              a.account_status,
             r.is_open,
             a.created_at,
             a.updated_at
@@ -502,6 +572,12 @@ export async function loginRestaurantAccount(
 
   if (!verifyPassword(payload.password, account.password_hash)) {
     throw new InputError("Invalid email or password.", 401);
+  }
+
+  const accountStatus = normalizeAccountStatus(account.account_status);
+
+  if (accountStatus !== "approved") {
+    throw new InputError(statusLoginMessage(accountStatus), 403);
   }
 
   return mapProfile(account);
@@ -525,6 +601,7 @@ export async function listRestaurantAccounts(): Promise<RestaurantAuthProfile[]>
             a.gstin,
             a.sgst_percent,
             a.cgst_percent,
+              a.account_status,
             r.is_open,
             a.created_at,
             a.updated_at
