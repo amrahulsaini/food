@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export default function Home() {
@@ -41,7 +42,17 @@ export default function Home() {
     <div className="soft-grid-bg flex flex-1">
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-5 pb-12 pt-10 md:px-8 lg:px-12">
         <section className="glass-panel fade-up p-6 md:p-9">
-          <p className="brand-badge">Foodisthan</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Image
+              src="/foodistha-main-logo.webp"
+              alt="Foodisthan logo"
+              width={280}
+              height={80}
+              priority
+              className="h-12 w-auto object-contain md:h-14"
+            />
+            <p className="brand-badge">Official Website</p>
+          </div>
           <h1 className="mt-4 max-w-3xl text-3xl font-black tracking-tight text-[var(--brand-deep)] md:text-5xl">
             Delicious food discovery, restaurant growth, and delivery in one place.
           </h1>

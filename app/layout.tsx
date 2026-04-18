@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   title: "Foodisthan Platform",
   description:
     "Foodisthan multi-app foundation for customer, restro, and delivery products.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({
