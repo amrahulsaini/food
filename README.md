@@ -27,7 +27,7 @@ The current codebase includes:
 npm install
 ```
 
-2. Create `.env.local` using `.env.example` values:
+2. Create `.env.local` using `env.sample` values:
 
 ```bash
 DB_HOST=34.133.49.19
