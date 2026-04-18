@@ -491,6 +491,64 @@ async function runRestroAuthSchemaSetup(): Promise<void> {
       ALTER TABLE restaurant_accounts
       MODIFY COLUMN owner_email VARCHAR(160) NULL
     `);
+    columns = await readColumns();
+  }
+
+  // Older deployments may still keep these legacy fields as NOT NULL.
+  // Make them nullable so new inserts that target owner_* columns work safely.
+  if (hasColumn("mobile_number") && !isNullable("mobile_number")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN mobile_number VARCHAR(20) NULL
+    `);
+    columns = await readColumns();
+  }
+
+  if (hasColumn("email") && !isNullable("email")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN email VARCHAR(160) NULL
+    `);
+    columns = await readColumns();
+  }
+
+  if (hasColumn("address_line1") && !isNullable("address_line1")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN address_line1 VARCHAR(220) NULL
+    `);
+    columns = await readColumns();
+  }
+
+  if (hasColumn("address_line2") && !isNullable("address_line2")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN address_line2 VARCHAR(220) NULL
+    `);
+    columns = await readColumns();
+  }
+
+  if (hasColumn("landmark") && !isNullable("landmark")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN landmark VARCHAR(120) NULL
+    `);
+    columns = await readColumns();
+  }
+
+  if (hasColumn("state") && !isNullable("state")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN state VARCHAR(80) NULL
+    `);
+    columns = await readColumns();
+  }
+
+  if (hasColumn("pincode") && !isNullable("pincode")) {
+    await execute(`
+      ALTER TABLE restaurant_accounts
+      MODIFY COLUMN pincode VARCHAR(20) NULL
+    `);
   }
 
   const statusColumnRows = await query<Array<RowDataPacket & { total: number }>>(
