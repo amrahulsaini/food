@@ -193,6 +193,7 @@ function RestroDashboardContent() {
   const toastTimerRef = useRef<number | null>(null);
   const categoryUploadRequestRef = useRef(0);
   const itemUploadRequestRef = useRef(0);
+  const itemImageInputRef = useRef<HTMLInputElement | null>(null);
 
   const [restaurantSlugInput, setRestaurantSlugInput] = useState(initialRestaurantSlug);
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
@@ -222,6 +223,17 @@ function RestroDashboardContent() {
   const [isSavingItem, setIsSavingItem] = useState(false);
   const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
+
+  function clearItemImageSelection(): void {
+    itemUploadRequestRef.current += 1;
+    setItemImageFile(null);
+    setItemUploadProgress(0);
+    setIsItemImageUploading(false);
+
+    if (itemImageInputRef.current) {
+      itemImageInputRef.current.value = "";
+    }
+  }
 
   const selectedCategory =
     categories.find((category) => category.id === selectedCategoryId) ?? null;
@@ -764,8 +776,7 @@ function RestroDashboardContent() {
       });
 
       setEditingItemId(null);
-      setItemImageFile(null);
-      setItemUploadProgress(0);
+      clearItemImageSelection();
       setItemForm(emptyItemForm(selectedCategoryId));
       updateStatus(editingItemId ? "Item updated." : "Item created.");
     } catch (error) {
@@ -810,7 +821,7 @@ function RestroDashboardContent() {
   }
 
   function editItem(item: Item): void {
-    itemUploadRequestRef.current += 1;
+    clearItemImageSelection();
     setActiveSection("items");
     setSelectedCategoryId(item.categoryId);
     setEditingItemId(item.id);
@@ -851,9 +862,6 @@ function RestroDashboardContent() {
             }))
           : [emptyAddon(0)],
     });
-    setItemImageFile(null);
-    setItemUploadProgress(0);
-    setIsItemImageUploading(false);
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1309,6 +1317,7 @@ function RestroDashboardContent() {
 
                   <div className="space-y-2">
                     <input
+                      ref={itemImageInputRef}
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
                       className="food-input"
@@ -1711,12 +1720,9 @@ function RestroDashboardContent() {
                         type="button"
                         className="food-btn-outline"
                         onClick={() => {
-                          itemUploadRequestRef.current += 1;
                           setEditingItemId(null);
+                          clearItemImageSelection();
                           setItemForm(emptyItemForm(selectedCategoryId));
-                          setItemImageFile(null);
-                          setItemUploadProgress(0);
-                          setIsItemImageUploading(false);
                         }}
                       >
                         Cancel Edit
