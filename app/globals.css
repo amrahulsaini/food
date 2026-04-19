@@ -224,38 +224,34 @@ a {
 }
 
 .sidebar-owner-restaurant {
-  margin-top: 0.25rem;
-  display: inline-flex;
-  align-items: center;
+  margin-top: 0.22rem;
+  display: block;
   max-width: 100%;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  padding: 0.2rem 0.58rem;
-  font-size: 0.76rem;
+  font-size: 0.84rem;
   font-weight: 900;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: #fff7ef;
+  letter-spacing: 0.01em;
+  color: #7a1a3d;
   background-image: linear-gradient(
-    120deg,
+    90deg,
     #f70073 0%,
-    #ff5b16 20%,
-    #ffba08 40%,
-    #00c778 60%,
-    #009dff 80%,
+    #ff5b16 22%,
+    #ffba08 44%,
+    #00c778 64%,
+    #009dff 84%,
     #8a37ff 100%
   );
-  background-size: 240% 240%;
-  box-shadow:
-    0 0 0 1px rgba(247, 0, 115, 0.25),
-    0 8px 16px rgba(164, 16, 92, 0.32),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.25);
+  background-size: 220% 100%;
+  background-position: 0% 50%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 10px rgba(247, 0, 115, 0.2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  will-change: background-position, transform, filter;
+  will-change: background-position, text-shadow;
   animation: restro-name-rainbow 2.2s linear infinite,
-    restro-name-pop 1.2s ease-in-out infinite;
+    restro-name-glow 1.6s ease-in-out infinite;
 }
 
 @keyframes restro-name-rainbow {
@@ -268,16 +264,14 @@ a {
   }
 }
 
-@keyframes restro-name-pop {
+@keyframes restro-name-glow {
   0%,
   100% {
-    transform: translateY(0) scale(1);
-    filter: saturate(1) brightness(1);
+    text-shadow: 0 0 7px rgba(247, 0, 115, 0.16);
   }
 
   50% {
-    transform: translateY(-1px) scale(1.04);
-    filter: saturate(1.25) brightness(1.12);
+    text-shadow: 0 0 14px rgba(0, 157, 255, 0.33);
   }
 }
 
@@ -285,7 +279,7 @@ a {
   .sidebar-owner-restaurant {
     animation: none;
     background-position: 40% 50%;
-    filter: none;
+    text-shadow: none;
   }
 }
 
