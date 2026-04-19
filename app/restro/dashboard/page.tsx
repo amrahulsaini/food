@@ -650,6 +650,10 @@ function RestroDashboardContent() {
         sortOrder: index,
       }));
 
+    const selectedCategoryName = categories.find(
+      (category) => category.id === itemForm.categoryId
+    )?.name;
+
     try {
       setIsSavingItem(true);
 
@@ -664,6 +668,7 @@ function RestroDashboardContent() {
         body: JSON.stringify({
           restaurantId,
           categoryId: itemForm.categoryId,
+          categoryName: selectedCategoryName ?? null,
           name: itemForm.name,
           description: itemForm.description,
           imageUrl: itemForm.imageUrl,
@@ -692,9 +697,17 @@ function RestroDashboardContent() {
         throw new Error("Item save response is invalid.");
       }
 
+      const normalizedItem: Item = {
+        ...savedItem,
+        categoryName:
+          savedItem.categoryName?.trim() ||
+          categories.find((category) => category.id === savedItem.categoryId)?.name ||
+          "Category",
+      };
+
       setItems((prev) => {
-        const withoutCurrent = prev.filter((item) => item.id !== savedItem.id);
-        return [savedItem, ...withoutCurrent];
+        const withoutCurrent = prev.filter((item) => item.id !== normalizedItem.id);
+        return [normalizedItem, ...withoutCurrent];
       });
 
       setEditingItemId(null);

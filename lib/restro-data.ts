@@ -118,6 +118,7 @@ export interface ItemAddonPayload {
 export interface ItemPayload {
   restaurantId: number;
   categoryId: number;
+  categoryName: string | null;
   name: string;
   description: string | null;
   imageUrl: string | null;
@@ -442,6 +443,97 @@ function mapAddon(row: AddonRow): ItemAddon {
   };
 }
 
+function mapVariantPayload(
+  itemId: number,
+  variant: ItemVariantPayload,
+  index: number
+): ItemVariant {
+  return {
+    id: -(index + 1),
+    itemId,
+    name: variant.name,
+    priceDelta: variant.priceDelta,
+    stockQty: variant.stockQty,
+    isDefault: variant.isDefault,
+    sortOrder: variant.sortOrder,
+  };
+}
+
+function mapAddonPayload(
+  itemId: number,
+  addon: ItemAddonPayload,
+  index: number
+): ItemAddon {
+  return {
+    id: -(index + 1),
+    itemId,
+    name: addon.name,
+    price: addon.price,
+    maxSelect: addon.maxSelect,
+    isRequired: addon.isRequired,
+    isAvailable: addon.isAvailable,
+    sortOrder: addon.sortOrder,
+  };
+}
+
+function toResponseDateTime(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return value.includes("T") ? value : value.replace(" ", "T");
+}
+
+function buildCategorySnapshot(
+  categoryId: number,
+  payload: CategoryPayload,
+  createdAt: string | null
+): Category {
+  const now = new Date().toISOString();
+
+  return {
+    id: categoryId,
+    restaurantId: payload.restaurantId,
+    name: payload.name,
+    description: payload.description,
+    parentCategoryId: payload.parentCategoryId,
+    imageUrl: payload.imageUrl,
+    sortOrder: payload.sortOrder,
+    isActive: payload.isActive,
+    createdAt,
+    updatedAt: now,
+  };
+}
+
+function buildItemSnapshot(itemId: number, payload: ItemPayload, createdAt: string | null): Item {
+  const now = new Date().toISOString();
+
+  return {
+    id: itemId,
+    restaurantId: payload.restaurantId,
+    categoryId: payload.categoryId,
+    categoryName: payload.categoryName ?? "",
+    name: payload.name,
+    description: payload.description,
+    imageUrl: payload.imageUrl,
+    basePrice: payload.basePrice,
+    stockQty: payload.stockQty,
+    sku: payload.sku,
+    isVeg: payload.isVeg,
+    isAvailable: payload.isAvailable,
+    offerTitle: payload.offerTitle,
+    offerDiscountPercent: payload.offerDiscountPercent,
+    offerStartAt: toResponseDateTime(payload.offerStartAt),
+    offerEndAt: toResponseDateTime(payload.offerEndAt),
+    createdAt,
+    updatedAt: now,
+    variants: payload.variants.map((variant, index) =>
+      mapVariantPayload(itemId, variant, index)
+    ),
+    addons: payload.addons.map((addon, index) => mapAddonPayload(itemId, addon, index)),
+  };
+}
+
 function parseVariantPayload(raw: unknown, index: number): ItemVariantPayload {
   const value = raw as Record<string, unknown>;
 
@@ -510,6 +602,7 @@ export function parseItemPayload(body: unknown): ItemPayload {
   return {
     restaurantId: toInteger(value.restaurantId, "restaurantId", { min: 1 }),
     categoryId: toInteger(value.categoryId, "categoryId", { min: 1 }),
+    categoryName: toTrimmedString(value.categoryName, 120),
     name: toRequiredString(value.name, "Item name", 150),
     description: toTrimmedString(value.description, 1000),
     imageUrl: toTrimmedString(value.imageUrl, 500),
@@ -870,22 +963,7 @@ export async function createCategory(payload: CategoryPayload): Promise<Category
     ]
   );
 
-  const rows = await query<CategoryRow[]>(
-    `SELECT id, restaurant_id, name, description, parent_category_id,
-            image_url, sort_order, is_active, created_at, updated_at
-     FROM categories
-     WHERE id = ?
-     LIMIT 1`,
-    [result.insertId]
-  );
-
-  const category = rows[0];
-
-  if (!category) {
-    throw new Error("Category created but failed to fetch record.");
-  }
-
-  return mapCategory(category);
+  return buildCategorySnapshot(Number(result.insertId), payload, new Date().toISOString());
 }
 
 export async function updateCategory(
@@ -921,16 +999,7 @@ export async function updateCategory(
     throw new InputError("Category not found.", 404);
   }
 
-  const rows = await query<CategoryRow[]>(
-    `SELECT id, restaurant_id, name, description, parent_category_id,
-            image_url, sort_order, is_active, created_at, updated_at
-     FROM categories
-     WHERE id = ?
-     LIMIT 1`,
-    [categoryId]
-  );
-
-  return mapCategory(rows[0]);
+  return buildCategorySnapshot(categoryId, payload, null);
 }
 
 export async function deleteCategory(
@@ -1054,13 +1123,7 @@ export async function createItem(payload: ItemPayload): Promise<Item> {
     return insertedId;
   });
 
-  const item = await getItemById(itemId, payload.restaurantId);
-
-  if (!item) {
-    throw new Error("Item created but failed to fetch record.");
-  }
-
-  return item;
+  return buildItemSnapshot(itemId, payload, new Date().toISOString());
 }
 
 export async function updateItem(
@@ -1111,13 +1174,7 @@ export async function updateItem(
     await replaceAddons(connection, itemId, payload.addons);
   });
 
-  const item = await getItemById(itemId, payload.restaurantId);
-
-  if (!item) {
-    throw new InputError("Item not found.", 404);
-  }
-
-  return item;
+  return buildItemSnapshot(itemId, payload, null);
 }
 
 export async function deleteItem(itemId: number, restaurantId: number): Promise<void> {
@@ -1129,53 +1186,6 @@ export async function deleteItem(itemId: number, restaurantId: number): Promise<
   if (result.affectedRows === 0) {
     throw new InputError("Item not found.", 404);
   }
-}
-
-async function getItemById(
-  itemId: number,
-  restaurantId: number
-): Promise<Item | null> {
-  const itemRows = await query<ItemRow[]>(
-    `SELECT i.id, i.restaurant_id, i.category_id, c.name AS category_name,
-            i.name, i.description, i.image_url, i.base_price, i.stock_qty,
-            i.sku, i.is_veg, i.is_available,
-            i.offer_title, i.offer_discount_percent, i.offer_start_at, i.offer_end_at,
-            i.created_at, i.updated_at
-     FROM items i
-     INNER JOIN categories c ON c.id = i.category_id
-     WHERE i.id = ? AND i.restaurant_id = ?
-     LIMIT 1`,
-    [itemId, restaurantId]
-  );
-
-  const itemRow = itemRows[0];
-
-  if (!itemRow) {
-    return null;
-  }
-
-  const [variantRows, addonRows] = await Promise.all([
-    query<VariantRow[]>(
-      `SELECT id, item_id, name, price_delta, stock_qty, is_default, sort_order
-       FROM item_variants
-       WHERE item_id = ?
-       ORDER BY sort_order ASC, id ASC`,
-      [itemId]
-    ),
-    query<AddonRow[]>(
-      `SELECT id, item_id, name, price, max_select, is_required, is_available, sort_order
-       FROM item_addons
-       WHERE item_id = ?
-       ORDER BY sort_order ASC, id ASC`,
-      [itemId]
-    ),
-  ]);
-
-  return {
-    ...mapItemCore(itemRow),
-    variants: variantRows.map(mapVariant),
-    addons: addonRows.map(mapAddon),
-  };
 }
 
 export async function getCustomerMenu(restaurantId: number): Promise<{
