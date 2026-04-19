@@ -188,7 +188,7 @@ function ThreeDotSpinner({ className = "" }: { className?: string }) {
 function SidebarIcon({
   name,
 }: {
-  name: "home" | "categories" | "items" | "preview" | "sync" | "login";
+  name: "home" | "categories" | "items" | "preview" | "sync" | "login" | "profile";
 }) {
   if (name === "home") {
     return (
@@ -240,6 +240,15 @@ function SidebarIcon({
     );
   }
 
+  if (name === "profile") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M4 5h16v14H4z" />
@@ -252,7 +261,13 @@ function RestroDashboardContent() {
   const searchParams = useSearchParams();
   const initialRestaurantSlug =
     searchParams.get("slug")?.trim().toLowerCase() ?? "";
-  const ownerName = searchParams.get("owner")?.trim() || "Manager";
+  const initialOwnerName = searchParams.get("owner")?.trim() || "Manager";
+  const initialOwnerEmail = searchParams.get("email")?.trim().toLowerCase() ?? "";
+  const initialRestaurantIdRaw = Number.parseInt(searchParams.get("rid") ?? "", 10);
+  const initialRestaurantId =
+    Number.isFinite(initialRestaurantIdRaw) && initialRestaurantIdRaw > 0
+      ? initialRestaurantIdRaw
+      : null;
   const toastTimerRef = useRef<number | null>(null);
   const autoSyncDoneRef = useRef(false);
   const categoryUploadRequestRef = useRef(0);
@@ -260,7 +275,9 @@ function RestroDashboardContent() {
   const itemImageInputRef = useRef<HTMLInputElement | null>(null);
 
   const [restaurantSlugInput] = useState(initialRestaurantSlug);
-  const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  const [restaurantId, setRestaurantId] = useState<number | null>(initialRestaurantId);
+  const [ownerName, setOwnerName] = useState(initialOwnerName);
+  const [ownerEmail, setOwnerEmail] = useState(initialOwnerEmail);
   const [status, setStatus] = useState("Enter restaurant slug and click Sync Data.");
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -377,7 +394,10 @@ function RestroDashboardContent() {
     }, 3000);
   }
 
-  const resolveRestaurantId = useCallback(async (slugValue: string): Promise<number> => {
+  const resolveRestaurantProfile = useCallback(
+    async (
+      slugValue: string
+    ): Promise<{ restaurantId: number; ownerName: string; ownerEmail: string }> => {
     const slug = slugValue.trim().toLowerCase();
 
     if (!/^[a-z0-9]{6,8}$/.test(slug)) {
@@ -395,17 +415,26 @@ function RestroDashboardContent() {
     const payload = (await response.json()) as {
       restaurant?: {
         restaurantId?: number;
+        ownerName?: string;
+        ownerEmail?: string;
       };
     };
 
-    const id = payload.restaurant?.restaurantId;
+    const restaurant = payload.restaurant;
+    const id = restaurant?.restaurantId;
 
     if (!id || !Number.isFinite(id)) {
       throw new Error("Unable to resolve restaurant by slug.");
     }
 
-    return Number(id);
-  }, []);
+    return {
+      restaurantId: Number(id),
+      ownerName: restaurant?.ownerName?.trim() || "Manager",
+      ownerEmail: restaurant?.ownerEmail?.trim().toLowerCase() || "",
+    };
+  },
+    []
+  );
 
   const loadData = useCallback(async (restaurantId: number) => {
     setLoading(true);
@@ -463,9 +492,18 @@ function RestroDashboardContent() {
 
   async function refreshData(): Promise<void> {
     try {
-      const resolvedRestaurantId = await resolveRestaurantId(restaurantSlugInput);
-      setRestaurantId(resolvedRestaurantId);
-      await loadData(resolvedRestaurantId);
+      const resolvedRestaurant = await resolveRestaurantProfile(restaurantSlugInput);
+      setRestaurantId(resolvedRestaurant.restaurantId);
+
+      if (resolvedRestaurant.ownerName) {
+        setOwnerName(resolvedRestaurant.ownerName);
+      }
+
+      if (resolvedRestaurant.ownerEmail) {
+        setOwnerEmail(resolvedRestaurant.ownerEmail);
+      }
+
+      await loadData(resolvedRestaurant.restaurantId);
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to sync dashboard.");
     }
@@ -964,7 +1002,12 @@ function RestroDashboardContent() {
           <aside className="dashboard-side-menu elevated-card p-4">
             <div className="sidebar-owner">
               <p className="sidebar-owner-name">{ownerName}</p>
-              <p className="sidebar-owner-slug">Slug: {restaurantSlugInput}</p>
+              <p className="sidebar-owner-meta">
+                Restro ID: {restaurantId ?? "Not synced"}
+              </p>
+              <p className="sidebar-owner-meta">
+                Email: {ownerEmail || "Not available"}
+              </p>
             </div>
 
             <div className="sidebar-menu-list mt-4">
@@ -1073,6 +1116,23 @@ function RestroDashboardContent() {
                 <span className="sidebar-menu-left">
                   {loading ? <ThreeDotSpinner /> : <SidebarIcon name="sync" />}
                   {loading ? "Refreshing" : "Refresh"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="dashboard-nav-btn"
+                onClick={() => {
+                  updateStatus(
+                    `Profile: ${ownerName} | ${ownerEmail || "Email unavailable"} | Restro ID: ${
+                      restaurantId ?? "Not synced"
+                    }`
+                  );
+                }}
+              >
+                <span className="sidebar-menu-left">
+                  <SidebarIcon name="profile" />
+                  Profile
                 </span>
               </button>
 

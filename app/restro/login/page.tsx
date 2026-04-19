@@ -7,8 +7,10 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 type AuthPanel = "login" | "register";
 
 interface RestaurantAuthProfile {
+  restaurantId: number;
   restaurantSlug: string;
   ownerName: string;
+  ownerEmail: string;
 }
 
 interface LoginFormState {
@@ -283,10 +285,13 @@ export default function RestroLoginPage() {
 
       notify("Login successful. Opening dashboard...");
 
+      const ownerQuery = encodeURIComponent(restaurant.ownerName);
+      const slugQuery = encodeURIComponent(restaurant.restaurantSlug);
+      const restaurantIdQuery = encodeURIComponent(String(restaurant.restaurantId));
+      const emailQuery = encodeURIComponent(restaurant.ownerEmail);
+
       router.push(
-        `/restro/dashboard?slug=${encodeURIComponent(
-          restaurant.restaurantSlug
-        )}&owner=${encodeURIComponent(restaurant.ownerName)}`
+        `/restro/dashboard?slug=${slugQuery}&owner=${ownerQuery}&rid=${restaurantIdQuery}&email=${emailQuery}`
       );
     } catch (error) {
       notify(error instanceof Error ? error.message : "Sign-in failed.");

@@ -204,7 +204,8 @@ a {
   color: #3b2117;
 }
 
-.sidebar-owner-slug {
+.sidebar-owner-slug,
+.sidebar-owner-meta {
   margin-top: 0.15rem;
   font-size: 0.75rem;
   color: #734634;
