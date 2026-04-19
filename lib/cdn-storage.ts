@@ -1,15 +1,15 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import sharp from "sharp";
 
 import { InputError } from "@/lib/restro-data";
 
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
-const ALLOWED_MIME_TO_EXT: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-};
+const MAX_IMAGE_WIDTH = 1600;
+const MAX_IMAGE_HEIGHT = 1600;
+const WEBP_QUALITY = 72;
+const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export function normalizeCdnSlug(value: unknown): string {
   if (typeof value !== "string") {
@@ -25,29 +25,15 @@ export function normalizeCdnSlug(value: unknown): string {
   return normalized;
 }
 
-function getImageExtension(file: File): string {
-  const mimeType = file.type.toLowerCase();
-  const extFromMime = ALLOWED_MIME_TO_EXT[mimeType];
+function hasAllowedImageExtension(fileName: string): boolean {
+  const normalizedName = fileName.toLowerCase();
 
-  if (extFromMime) {
-    return extFromMime;
-  }
-
-  const originalName = file.name.toLowerCase();
-
-  if (originalName.endsWith(".jpg") || originalName.endsWith(".jpeg")) {
-    return "jpg";
-  }
-
-  if (originalName.endsWith(".png")) {
-    return "png";
-  }
-
-  if (originalName.endsWith(".webp")) {
-    return "webp";
-  }
-
-  throw new InputError("Upload a JPG, PNG, or WEBP image.");
+  return (
+    normalizedName.endsWith(".jpg") ||
+    normalizedName.endsWith(".jpeg") ||
+    normalizedName.endsWith(".png") ||
+    normalizedName.endsWith(".webp")
+  );
 }
 
 function validateImageFile(file: File): void {
@@ -59,22 +45,51 @@ function validateImageFile(file: File): void {
     throw new InputError("Image size should be 8 MB or less.");
   }
 
-  getImageExtension(file);
+  const mimeType = file.type.toLowerCase();
+
+  if (mimeType && !ALLOWED_MIME_TYPES.has(mimeType)) {
+    throw new InputError("Upload a JPG, PNG, or WEBP image.");
+  }
+
+  if (!mimeType && !hasAllowedImageExtension(file.name)) {
+    throw new InputError("Upload a JPG, PNG, or WEBP image.");
+  }
 }
 
 export async function saveImageToCdn(slugValue: unknown, file: File): Promise<string> {
   const slug = normalizeCdnSlug(slugValue);
   validateImageFile(file);
 
-  const extension = getImageExtension(file);
-  const fileName = `${Date.now()}-${randomBytes(4).toString("hex")}.${extension}`;
+  const fileName = `${Date.now()}-${randomBytes(4).toString("hex")}.webp`;
   const targetDir = path.join(process.cwd(), "public", "cdn", slug, "images");
   const targetPath = path.join(targetDir, fileName);
 
   await mkdir(targetDir, { recursive: true });
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(targetPath, buffer);
+  const sourceBuffer = Buffer.from(await file.arrayBuffer());
+
+  let optimizedBuffer: Buffer;
+
+  try {
+    optimizedBuffer = await sharp(sourceBuffer)
+      .rotate()
+      .resize({
+        width: MAX_IMAGE_WIDTH,
+        height: MAX_IMAGE_HEIGHT,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({
+        quality: WEBP_QUALITY,
+        effort: 4,
+        smartSubsample: true,
+      })
+      .toBuffer();
+  } catch {
+    throw new InputError("Invalid image file. Upload a JPG, PNG, or WEBP image.");
+  }
+
+  await writeFile(targetPath, optimizedBuffer);
 
   return `/cdn/${slug}/images/${fileName}`;
 }

@@ -638,6 +638,19 @@ a {
   animation-delay: 0.28s;
 }
 
+.progressive-image {
+  filter: blur(10px);
+  opacity: 0.82;
+  transform: scale(1.03);
+  transition: filter 220ms ease, opacity 220ms ease, transform 220ms ease;
+}
+
+.progressive-image-loaded {
+  filter: blur(0);
+  opacity: 1;
+  transform: scale(1);
+}
+
 .fade-up {
   animation: fadeUp 0.65s ease both;
 }

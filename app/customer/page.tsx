@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+import ProgressiveImage from "@/app/components/progressive-image";
 
 interface ItemVariant {
   id: number;
@@ -143,7 +144,7 @@ export default function CustomerPreviewPage() {
               <article key={category.id} className="elevated-card p-4">
                 <div className="flex items-center gap-3">
                   {category.imageUrl ? (
-                    <img
+                    <ProgressiveImage
                       src={category.imageUrl}
                       alt={category.name}
                       loading="lazy"
@@ -164,7 +165,7 @@ export default function CustomerPreviewPage() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex min-w-0 items-start gap-3">
                           {item.imageUrl ? (
-                            <img
+                            <ProgressiveImage
                               src={item.imageUrl}
                               alt={item.name}
                               loading="lazy"

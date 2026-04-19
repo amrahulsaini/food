@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import ProgressiveImage from "@/app/components/progressive-image";
 
 interface Category {
   id: number;
@@ -1277,7 +1278,7 @@ function RestroDashboardContent() {
                       >
                         <span className="inline-flex min-w-0 items-center gap-2">
                           {category.imageUrl ? (
-                            <img
+                            <ProgressiveImage
                               src={category.imageUrl}
                               alt={category.name}
                               loading="lazy"
@@ -1540,7 +1541,7 @@ function RestroDashboardContent() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
                         {category.imageUrl ? (
-                          <img
+                          <ProgressiveImage
                             src={category.imageUrl}
                             alt={category.name}
                             loading="lazy"
@@ -1618,7 +1619,7 @@ function RestroDashboardContent() {
                 <div className="menu-selected-category mt-4">
                   <div className="flex items-center gap-3">
                     {selectedCategory.imageUrl ? (
-                      <img
+                      <ProgressiveImage
                         src={selectedCategory.imageUrl}
                         alt={selectedCategory.name}
                         loading="lazy"
@@ -2113,7 +2114,7 @@ function RestroDashboardContent() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex min-w-0 items-start gap-3">
                             {item.imageUrl ? (
-                              <img
+                              <ProgressiveImage
                                 src={item.imageUrl}
                                 alt={item.name}
                                 loading="lazy"
@@ -2234,9 +2235,10 @@ function RestroDashboardContent() {
               <>
                 <div className="profile-hero mt-4">
                   {profileDetails.restaurantImageUrl ? (
-                    <img
+                    <ProgressiveImage
                       src={profileDetails.restaurantImageUrl}
                       alt={profileDetails.restaurantName}
+                      loading="eager"
                       className="profile-hero-image"
                     />
                   ) : (
