@@ -225,9 +225,56 @@ a {
 
 .sidebar-owner-restaurant {
   margin-top: 0.2rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #5c3426;
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #7a1930;
+  background-image: linear-gradient(
+    90deg,
+    #ff2f7a 0%,
+    #ff7a18 20%,
+    #ffd200 40%,
+    #29d17c 60%,
+    #2ab7ff 80%,
+    #b86bff 100%
+  );
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 14px rgba(255, 86, 121, 0.25);
+  will-change: background-position, transform;
+  animation: restro-name-rainbow 3.4s linear infinite,
+    restro-name-pop 1.8s ease-in-out infinite;
+}
+
+@keyframes restro-name-rainbow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 240% 50%;
+  }
+}
+
+@keyframes restro-name-pop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-1px) scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-owner-restaurant {
+    animation: none;
+    background-position: 40% 50%;
+  }
 }
 
 .sidebar-owner-slug,
