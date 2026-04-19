@@ -101,6 +101,25 @@ interface ItemForm {
   addons: AddonDraft[];
 }
 
+interface RestaurantProfileDetails {
+  restaurantId: number;
+  restaurantName: string;
+  restaurantSlug: string;
+  restaurantImageUrl: string | null;
+  ownerName: string;
+  ownerMobile: string;
+  ownerEmail: string;
+  businessAddress: string;
+  city: string;
+  postalCode: string;
+  gstin: string | null;
+  sgstPercent: number;
+  cgstPercent: number;
+  accountStatus: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 const emptyCategoryForm: CategoryForm = {
   name: "",
   description: "",
@@ -164,6 +183,36 @@ function formatToDateTimeLocal(value: string | null): string {
 
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+function formatProfileDateTime(value: string | null): string {
+  if (!value) {
+    return "Not available";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Not available";
+  }
+
+  return date.toLocaleString("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatStatusLabel(status: string): string {
+  const normalized = status.trim().toLowerCase().replace(/_/g, " ");
+
+  if (!normalized) {
+    return "Unknown";
+  }
+
+  return normalized.replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
 }
 
 async function readMessage(response: Response): Promise<string> {
@@ -305,6 +354,9 @@ function RestroDashboardContent() {
   const [restaurantId, setRestaurantId] = useState<number | null>(initialRestaurantId);
   const [restaurantName, setRestaurantName] = useState(initialRestaurantName);
   const [ownerEmail, setOwnerEmail] = useState(initialOwnerEmail);
+  const [profileDetails, setProfileDetails] = useState<RestaurantProfileDetails | null>(null);
+  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [status, setStatus] = useState("Enter restaurant slug and click Sync Data.");
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -403,6 +455,24 @@ function RestroDashboardContent() {
     });
   }, [restaurantSlugInput]);
 
+  useEffect(() => {
+    if (!isProfileDialogOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsProfileDialogOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isProfileDialogOpen]);
+
   function scrollToSection(section: "categories" | "items"): void {
     setActiveSection(section);
   }
@@ -424,11 +494,7 @@ function RestroDashboardContent() {
   const resolveRestaurantProfile = useCallback(
     async (
       slugValue: string
-    ): Promise<{
-      restaurantId: number;
-      restaurantName: string;
-      ownerEmail: string;
-    }> => {
+    ): Promise<RestaurantProfileDetails> => {
     const slug = slugValue.trim().toLowerCase();
 
     if (!/^[a-z0-9]{6,8}$/.test(slug)) {
@@ -447,7 +513,20 @@ function RestroDashboardContent() {
       restaurant?: {
         restaurantId?: number;
         restaurantName?: string;
+        restaurantSlug?: string;
+        restaurantImageUrl?: string | null;
+        ownerName?: string;
+        ownerMobile?: string;
         ownerEmail?: string;
+        businessAddress?: string;
+        city?: string;
+        postalCode?: string;
+        gstin?: string | null;
+        sgstPercent?: number;
+        cgstPercent?: number;
+        accountStatus?: string;
+        createdAt?: string | null;
+        updatedAt?: string | null;
       };
     };
 
@@ -461,7 +540,29 @@ function RestroDashboardContent() {
     return {
       restaurantId: Number(id),
       restaurantName: restaurant?.restaurantName?.trim() || "",
+      restaurantSlug: restaurant?.restaurantSlug?.trim().toLowerCase() || slug,
+      restaurantImageUrl:
+        typeof restaurant?.restaurantImageUrl === "string"
+          ? restaurant.restaurantImageUrl
+          : null,
+      ownerName: restaurant?.ownerName?.trim() || "Not available",
+      ownerMobile: restaurant?.ownerMobile?.trim() || "Not available",
       ownerEmail: restaurant?.ownerEmail?.trim().toLowerCase() || "",
+      businessAddress: restaurant?.businessAddress?.trim() || "Not available",
+      city: restaurant?.city?.trim() || "Not available",
+      postalCode: restaurant?.postalCode?.trim() || "Not available",
+      gstin: restaurant?.gstin?.trim() || null,
+      sgstPercent:
+        Number.isFinite(Number(restaurant?.sgstPercent))
+          ? Number(restaurant?.sgstPercent)
+          : 0,
+      cgstPercent:
+        Number.isFinite(Number(restaurant?.cgstPercent))
+          ? Number(restaurant?.cgstPercent)
+          : 0,
+      accountStatus: restaurant?.accountStatus?.trim().toLowerCase() || "unknown",
+      createdAt: restaurant?.createdAt ?? null,
+      updatedAt: restaurant?.updatedAt ?? null,
     };
   },
     []
@@ -525,6 +626,7 @@ function RestroDashboardContent() {
     try {
       const resolvedRestaurant = await resolveRestaurantProfile(restaurantSlugInput);
       setRestaurantId(resolvedRestaurant.restaurantId);
+      setProfileDetails(resolvedRestaurant);
 
       if (resolvedRestaurant.restaurantName) {
         setRestaurantName(resolvedRestaurant.restaurantName);
@@ -537,6 +639,34 @@ function RestroDashboardContent() {
       await loadData(resolvedRestaurant.restaurantId);
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to sync dashboard.");
+    }
+  }
+
+  async function openProfileDialog(): Promise<void> {
+    setIsProfileDialogOpen(true);
+
+    if (profileDetails) {
+      return;
+    }
+
+    setIsProfileLoading(true);
+
+    try {
+      const resolvedRestaurant = await resolveRestaurantProfile(restaurantSlugInput);
+      setProfileDetails(resolvedRestaurant);
+      setRestaurantId(resolvedRestaurant.restaurantId);
+
+      if (resolvedRestaurant.restaurantName) {
+        setRestaurantName(resolvedRestaurant.restaurantName);
+      }
+
+      if (resolvedRestaurant.ownerEmail) {
+        setOwnerEmail(resolvedRestaurant.ownerEmail);
+      }
+    } catch (error) {
+      updateStatus(error instanceof Error ? error.message : "Unable to load profile details.");
+    } finally {
+      setIsProfileLoading(false);
     }
   }
 
@@ -1156,11 +1286,9 @@ function RestroDashboardContent() {
                 type="button"
                 className="dashboard-nav-btn"
                 onClick={() => {
-                  updateStatus(
-                    `Profile: ${restaurantName || "Restaurant unavailable"} | ${ownerEmail || "Email unavailable"} | Slug ID: ${
-                      restaurantSlugInput || "Not available"
-                    }`
-                  );
+                  openProfileDialog().catch(() => {
+                    updateStatus("Unable to open profile details.");
+                  });
                 }}
               >
                 <span className="sidebar-menu-left">
@@ -1177,6 +1305,9 @@ function RestroDashboardContent() {
                   setItems([]);
                   setSelectedCategoryId(null);
                   setRestaurantId(null);
+                  setProfileDetails(null);
+                  setIsProfileDialogOpen(false);
+                  setIsProfileLoading(false);
                   updateStatus("Logged out.");
                   router.replace("/restro/login");
                 }}
@@ -2008,6 +2139,143 @@ function RestroDashboardContent() {
           </div>
         </section>
       </main>
+
+      {isProfileDialogOpen ? (
+        <div
+          className="profile-dialog-backdrop"
+          onClick={() => {
+            setIsProfileDialogOpen(false);
+          }}
+        >
+          <div
+            className="profile-dialog-card elevated-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-dialog-title"
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <div className="profile-dialog-header">
+              <div>
+                <p className="brand-badge">Restaurant Profile</p>
+                <h3 id="profile-dialog-title" className="profile-dialog-title">
+                  {profileDetails?.restaurantName || restaurantName || "Restaurant Details"}
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                className="food-btn-outline"
+                onClick={() => {
+                  setIsProfileDialogOpen(false);
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            {isProfileLoading ? (
+              <p className="profile-dialog-loading">
+                <ThreeDotSpinner />
+                Loading full profile details...
+              </p>
+            ) : profileDetails ? (
+              <>
+                <div className="profile-hero mt-4">
+                  {profileDetails.restaurantImageUrl ? (
+                    <img
+                      src={profileDetails.restaurantImageUrl}
+                      alt={profileDetails.restaurantName}
+                      className="profile-hero-image"
+                    />
+                  ) : (
+                    <div className="profile-hero-image profile-hero-image-empty" />
+                  )}
+
+                  <div className="profile-hero-meta">
+                    <p className="profile-hero-slug">
+                      Slug ID: {profileDetails.restaurantSlug || restaurantSlugInput}
+                    </p>
+                    <span
+                      className={`profile-status-pill profile-status-${
+                        profileDetails.accountStatus || "unknown"
+                      }`}
+                    >
+                      {formatStatusLabel(profileDetails.accountStatus)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="profile-grid mt-4">
+                  <div className="profile-field">
+                    <p className="profile-label">Restaurant ID</p>
+                    <p className="profile-value">{profileDetails.restaurantId}</p>
+                  </div>
+
+                  <div className="profile-field">
+                    <p className="profile-label">Owner Name</p>
+                    <p className="profile-value">{profileDetails.ownerName}</p>
+                  </div>
+
+                  <div className="profile-field">
+                    <p className="profile-label">Owner Email</p>
+                    <p className="profile-value">{profileDetails.ownerEmail || "Not available"}</p>
+                  </div>
+
+                  <div className="profile-field">
+                    <p className="profile-label">Owner Mobile</p>
+                    <p className="profile-value">{profileDetails.ownerMobile}</p>
+                  </div>
+
+                  <div className="profile-field profile-field-full">
+                    <p className="profile-label">Business Address</p>
+                    <p className="profile-value profile-value-wrap">
+                      {profileDetails.businessAddress}
+                    </p>
+                  </div>
+
+                  <div className="profile-field">
+                    <p className="profile-label">City</p>
+                    <p className="profile-value">{profileDetails.city}</p>
+                  </div>
+
+                  <div className="profile-field">
+                    <p className="profile-label">Postal Code</p>
+                    <p className="profile-value">{profileDetails.postalCode}</p>
+                  </div>
+
+                  <div className="profile-field">
+                    <p className="profile-label">GSTIN</p>
+                    <p className="profile-value">{profileDetails.gstin || "Not available"}</p>
+                  </div>
+
+                  <div className="profile-field">
+                    <p className="profile-label">Tax (SGST / CGST)</p>
+                    <p className="profile-value">
+                      {profileDetails.sgstPercent.toFixed(2)}% / {profileDetails.cgstPercent.toFixed(2)}%
+                    </p>
+                  </div>
+
+                  <div className="profile-field">
+                    <p className="profile-label">Created At</p>
+                    <p className="profile-value">{formatProfileDateTime(profileDetails.createdAt)}</p>
+                  </div>
+
+                  <div className="profile-field">
+                    <p className="profile-label">Updated At</p>
+                    <p className="profile-value">{formatProfileDateTime(profileDetails.updatedAt)}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="profile-dialog-empty">
+                Profile details are unavailable. Click Refresh and try again.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
