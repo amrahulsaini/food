@@ -1090,6 +1090,34 @@ export async function getItemsByRestaurant(restaurantId: number): Promise<Item[]
 }
 
 export async function createItem(payload: ItemPayload): Promise<Item> {
+  if (payload.variants.length === 0 && payload.addons.length === 0) {
+    const result = await execute(
+      `INSERT INTO items
+      (restaurant_id, category_id, name, description, image_url, base_price,
+       stock_qty, sku, is_veg, is_available, offer_title, offer_discount_percent,
+       offer_start_at, offer_end_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        payload.restaurantId,
+        payload.categoryId,
+        payload.name,
+        payload.description,
+        payload.imageUrl,
+        payload.basePrice,
+        payload.stockQty,
+        payload.sku,
+        payload.isVeg ? 1 : 0,
+        payload.isAvailable ? 1 : 0,
+        payload.offerTitle,
+        payload.offerDiscountPercent,
+        payload.offerStartAt,
+        payload.offerEndAt,
+      ]
+    );
+
+    return buildItemSnapshot(Number(result.insertId), payload, new Date().toISOString());
+  }
+
   const itemId = await withTransaction(async (connection) => {
     const [result] = await connection.execute<ResultSetHeader>(
       `INSERT INTO items
