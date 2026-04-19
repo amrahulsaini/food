@@ -185,6 +185,69 @@ function ThreeDotSpinner({ className = "" }: { className?: string }) {
   );
 }
 
+function SidebarIcon({
+  name,
+}: {
+  name: "home" | "categories" | "items" | "preview" | "sync" | "login";
+}) {
+  if (name === "home") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M3 10.5 12 3l9 7.5" />
+        <path d="M5 9.5V20h14V9.5" />
+      </svg>
+    );
+  }
+
+  if (name === "categories") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="4" width="7" height="7" rx="1.5" />
+        <rect x="14" y="4" width="7" height="7" rx="1.5" />
+        <rect x="3" y="13" width="7" height="7" rx="1.5" />
+        <rect x="14" y="13" width="7" height="7" rx="1.5" />
+      </svg>
+    );
+  }
+
+  if (name === "items") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M6 4h12l1.5 4H4.5L6 4Z" />
+        <path d="M5 8h14v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8Z" />
+        <path d="M9 12h6" />
+      </svg>
+    );
+  }
+
+  if (name === "preview") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    );
+  }
+
+  if (name === "sync") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M20 6v5h-5" />
+        <path d="M4 18v-5h5" />
+        <path d="M18.5 11A6.5 6.5 0 0 0 7 7.5" />
+        <path d="M5.5 13A6.5 6.5 0 0 0 17 16.5" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 5h16v14H4z" />
+      <path d="m9 10 3 3 3-3" />
+    </svg>
+  );
+}
+
 function RestroDashboardContent() {
   const searchParams = useSearchParams();
   const initialRestaurantSlug =
@@ -887,14 +950,6 @@ function RestroDashboardContent() {
                 windows.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href="/restro/login" className="food-btn-outline">
-                Back to Login
-              </Link>
-              <Link href="/customer" className="food-btn-outline">
-                Customer Preview
-              </Link>
-            </div>
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-[220px_1fr_auto]">
@@ -935,7 +990,7 @@ function RestroDashboardContent() {
           <aside className="dashboard-side-menu elevated-card p-4">
             <p className="brand-badge">Navigation</p>
 
-            <div className="mt-4 space-y-2">
+            <div className="sidebar-menu-list mt-4">
               <button
                 type="button"
                 className={`dashboard-nav-btn ${
@@ -945,7 +1000,10 @@ function RestroDashboardContent() {
                   scrollToSection("categories");
                 }}
               >
-                Categories
+                <span className="sidebar-menu-left">
+                  <SidebarIcon name="home" />
+                  Home
+                </span>
                 <span className="status-pill">{categories.length}</span>
               </button>
 
@@ -958,13 +1016,25 @@ function RestroDashboardContent() {
                   scrollToSection("items");
                 }}
               >
-                Items
+                <span className="sidebar-menu-left">
+                  <SidebarIcon name="items" />
+                  Items
+                </span>
                 <span className="status-pill">{items.length}</span>
               </button>
+
+              <Link href="/customer" className="dashboard-nav-btn">
+                <span className="sidebar-menu-left">
+                  <SidebarIcon name="preview" />
+                  Customer Preview
+                </span>
+              </Link>
             </div>
 
-            <div className="menu-sidebar-panel mt-5">
-              <p className="menu-sidebar-title">Menu Sidebar</p>
+            <div className="sidebar-divider" />
+
+            <div className="menu-sidebar-panel mt-3">
+              <p className="menu-sidebar-title">Categories</p>
 
               {categories.length === 0 ? (
                 <p className="mt-2 text-xs text-[#6c4633]">
@@ -1008,6 +1078,33 @@ function RestroDashboardContent() {
                   })}
                 </div>
               )}
+            </div>
+
+            <div className="sidebar-divider" />
+
+            <div className="sidebar-utility-list mt-3">
+              <button
+                type="button"
+                className="dashboard-nav-btn"
+                onClick={() => {
+                  refreshData().catch(() => {
+                    updateStatus("Unable to sync dashboard.");
+                  });
+                }}
+                disabled={loading}
+              >
+                <span className="sidebar-menu-left">
+                  {loading ? <ThreeDotSpinner /> : <SidebarIcon name="sync" />}
+                  {loading ? "Syncing" : "Sync Data"}
+                </span>
+              </button>
+
+              <Link href="/restro/login" className="dashboard-nav-btn">
+                <span className="sidebar-menu-left">
+                  <SidebarIcon name="login" />
+                  Back to Login
+                </span>
+              </Link>
             </div>
           </aside>
 

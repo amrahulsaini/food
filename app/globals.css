@@ -93,6 +93,8 @@ a {
   align-self: start;
   max-height: calc(100vh - 2.4rem);
   overflow-y: auto;
+  background: #f3f4f6;
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 @media (max-width: 1279px) {
@@ -151,31 +153,57 @@ a {
   justify-content: space-between;
   gap: 0.7rem;
   border-radius: 0.85rem;
-  border: 1px solid rgba(0, 0, 0, 0.16);
-  background: rgba(255, 255, 255, 0.75);
-  padding: 0.66rem 0.8rem;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 0.68rem 0.8rem;
   font-size: 0.92rem;
-  font-weight: 700;
-  color: #000000;
-  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+  font-weight: 600;
+  color: #253744;
+  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease, color 120ms ease;
 }
 
 .dashboard-nav-btn:hover {
-  border-color: rgba(209, 15, 47, 0.55);
-  background: rgba(255, 243, 238, 0.95);
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.75);
   transform: translateY(-1px);
 }
 
 .dashboard-nav-btn-active {
-  border-color: rgba(209, 15, 47, 0.8);
-  background: rgba(209, 15, 47, 0.12);
-  box-shadow: inset 3px 0 0 rgba(209, 15, 47, 0.85);
+  border-color: transparent;
+  background: #263d4b;
+  color: #f7fbff;
+  box-shadow: 0 8px 16px rgba(38, 61, 75, 0.25);
+}
+
+.dashboard-nav-btn svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+}
+
+.sidebar-menu-list,
+.sidebar-utility-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.sidebar-menu-left {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.11);
+  margin: 0.95rem 0;
 }
 
 .menu-sidebar-panel {
-  border: 1px solid rgba(0, 0, 0, 0.14);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 0.9rem;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.58);
   padding: 0.7rem;
 }
 
@@ -285,11 +313,16 @@ a {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  background: rgba(209, 15, 47, 0.12);
-  color: #000000;
+  background: rgba(209, 15, 47, 0.22);
+  color: #6e0c20;
   font-weight: 700;
   font-size: 0.74rem;
   padding: 0.25rem 0.6rem;
+}
+
+.dashboard-nav-btn-active .status-pill {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
 }
 
 .dot-spinner {
