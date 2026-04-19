@@ -280,6 +280,7 @@ function RestroDashboardContent() {
   const searchParams = useSearchParams();
   const initialRestaurantSlug =
     searchParams.get("slug")?.trim().toLowerCase() ?? "";
+  const initialRestaurantName = searchParams.get("rname")?.trim() || "";
   const initialOwnerName = searchParams.get("owner")?.trim() || "Manager";
   const initialOwnerEmail = searchParams.get("email")?.trim().toLowerCase() ?? "";
   const initialRestaurantIdRaw = Number.parseInt(searchParams.get("rid") ?? "", 10);
@@ -295,6 +296,7 @@ function RestroDashboardContent() {
 
   const [restaurantSlugInput] = useState(initialRestaurantSlug);
   const [restaurantId, setRestaurantId] = useState<number | null>(initialRestaurantId);
+  const [restaurantName, setRestaurantName] = useState(initialRestaurantName);
   const [ownerName, setOwnerName] = useState(initialOwnerName);
   const [ownerEmail, setOwnerEmail] = useState(initialOwnerEmail);
   const [status, setStatus] = useState("Enter restaurant slug and click Sync Data.");
@@ -416,7 +418,12 @@ function RestroDashboardContent() {
   const resolveRestaurantProfile = useCallback(
     async (
       slugValue: string
-    ): Promise<{ restaurantId: number; ownerName: string; ownerEmail: string }> => {
+    ): Promise<{
+      restaurantId: number;
+      restaurantName: string;
+      ownerName: string;
+      ownerEmail: string;
+    }> => {
     const slug = slugValue.trim().toLowerCase();
 
     if (!/^[a-z0-9]{6,8}$/.test(slug)) {
@@ -434,6 +441,7 @@ function RestroDashboardContent() {
     const payload = (await response.json()) as {
       restaurant?: {
         restaurantId?: number;
+        restaurantName?: string;
         ownerName?: string;
         ownerEmail?: string;
       };
@@ -448,6 +456,7 @@ function RestroDashboardContent() {
 
     return {
       restaurantId: Number(id),
+      restaurantName: restaurant?.restaurantName?.trim() || "",
       ownerName: restaurant?.ownerName?.trim() || "Manager",
       ownerEmail: restaurant?.ownerEmail?.trim().toLowerCase() || "",
     };
@@ -513,6 +522,10 @@ function RestroDashboardContent() {
     try {
       const resolvedRestaurant = await resolveRestaurantProfile(restaurantSlugInput);
       setRestaurantId(resolvedRestaurant.restaurantId);
+
+      if (resolvedRestaurant.restaurantName) {
+        setRestaurantName(resolvedRestaurant.restaurantName);
+      }
 
       if (resolvedRestaurant.ownerName) {
         setOwnerName(resolvedRestaurant.ownerName);
@@ -1021,6 +1034,9 @@ function RestroDashboardContent() {
           <aside className="dashboard-side-menu elevated-card p-4">
             <div className="sidebar-owner">
               <p className="sidebar-owner-name">{ownerName}</p>
+              <p className="sidebar-owner-restaurant">
+                {restaurantName || "Restaurant name not available"}
+              </p>
               <p className="sidebar-owner-meta">
                 Slug ID: {restaurantSlugInput || "Not available"}
               </p>
@@ -1143,7 +1159,7 @@ function RestroDashboardContent() {
                 className="dashboard-nav-btn"
                 onClick={() => {
                   updateStatus(
-                    `Profile: ${ownerName} | ${ownerEmail || "Email unavailable"} | Slug ID: ${
+                    `Profile: ${ownerName} | ${restaurantName || "Restaurant unavailable"} | ${ownerEmail || "Email unavailable"} | Slug ID: ${
                       restaurantSlugInput || "Not available"
                     }`
                   );

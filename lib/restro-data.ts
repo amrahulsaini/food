@@ -204,6 +204,59 @@ interface AddonRow extends RowDataPacket {
   sort_order: number;
 }
 
+const ITEM_LIST_CACHE_TTL_MS = 12_000;
+
+interface ItemListCacheEntry {
+  expiresAt: number;
+  items: Item[];
+}
+
+const itemListCache = new Map<number, ItemListCacheEntry>();
+
+function readItemListCache(restaurantId: number): Item[] | null {
+  const cached = itemListCache.get(restaurantId);
+
+  if (!cached) {
+    return null;
+  }
+
+  if (Date.now() > cached.expiresAt) {
+    itemListCache.delete(restaurantId);
+    return null;
+  }
+
+  return cached.items;
+}
+
+function writeItemListCache(restaurantId: number, items: Item[]): void {
+  itemListCache.set(restaurantId, {
+    expiresAt: Date.now() + ITEM_LIST_CACHE_TTL_MS,
+    items,
+  });
+}
+
+function invalidateItemListCache(restaurantId: number): void {
+  itemListCache.delete(restaurantId);
+}
+
+function logSlowItemListTiming(details: {
+  restaurantId: number;
+  totalMs: number;
+  itemQueryMs: number;
+  childQueryMs: number;
+  mapMs: number;
+  itemCount: number;
+  variantCount: number;
+  addonCount: number;
+  cacheHit: boolean;
+}): void {
+  if (details.totalMs < 900) {
+    return;
+  }
+
+  console.info("[restro-items] slow-list", details);
+}
+
 function toIso(value: Date | string | null): string | null {
   if (!value) {
     return null;
@@ -1114,36 +1167,106 @@ export async function deleteCategory(
 }
 
 export async function getItemsByRestaurant(restaurantId: number): Promise<Item[]> {
-  const [itemRows, variantRows, addonRows] = await Promise.all([
-    query<ItemRow[]>(
-      `SELECT i.id, i.restaurant_id, i.category_id, c.name AS category_name,
-              i.name, i.description, i.image_url, i.base_price, i.stock_qty,
-              i.sku, i.is_veg, i.is_available,
-              i.offer_title, i.offer_discount_percent, i.offer_start_at, i.offer_end_at,
-              i.created_at, i.updated_at
-       FROM items i
-       INNER JOIN categories c ON c.id = i.category_id
-       WHERE i.restaurant_id = ?
-       ORDER BY i.updated_at DESC, i.id DESC`,
-      [restaurantId]
-    ),
-    query<VariantRow[]>(
-      `SELECT v.id, v.item_id, v.name, v.price_delta, v.stock_qty, v.is_default, v.sort_order
-       FROM item_variants v
-       INNER JOIN items i ON i.id = v.item_id
-       WHERE i.restaurant_id = ?
-       ORDER BY v.sort_order ASC, v.id ASC`,
-      [restaurantId]
-    ),
-    query<AddonRow[]>(
-      `SELECT a.id, a.item_id, a.name, a.price, a.max_select, a.is_required, a.is_available, a.sort_order
-       FROM item_addons a
-       INNER JOIN items i ON i.id = a.item_id
-       WHERE i.restaurant_id = ?
-       ORDER BY a.sort_order ASC, a.id ASC`,
-      [restaurantId]
-    ),
+  const startedAt = Date.now();
+  const cachedItems = readItemListCache(restaurantId);
+
+  if (cachedItems) {
+    logSlowItemListTiming({
+      restaurantId,
+      totalMs: Date.now() - startedAt,
+      itemQueryMs: 0,
+      childQueryMs: 0,
+      mapMs: 0,
+      itemCount: cachedItems.length,
+      variantCount: cachedItems.reduce((acc, item) => acc + item.variants.length, 0),
+      addonCount: cachedItems.reduce((acc, item) => acc + item.addons.length, 0),
+      cacheHit: true,
+    });
+
+    return cachedItems;
+  }
+
+  const itemQueryStartedAt = Date.now();
+  const itemRows = await query<ItemRow[]>(
+    `SELECT i.id, i.restaurant_id, i.category_id, c.name AS category_name,
+            i.name, i.description, i.image_url, i.base_price, i.stock_qty,
+            i.sku, i.is_veg, i.is_available,
+            i.offer_title, i.offer_discount_percent, i.offer_start_at, i.offer_end_at,
+            i.created_at, i.updated_at
+     FROM items i
+     INNER JOIN categories c ON c.id = i.category_id
+     WHERE i.restaurant_id = ?
+     ORDER BY i.updated_at DESC, i.id DESC`,
+    [restaurantId]
+  );
+  const itemQueryMs = Date.now() - itemQueryStartedAt;
+
+  if (itemRows.length === 0) {
+    writeItemListCache(restaurantId, []);
+    logSlowItemListTiming({
+      restaurantId,
+      totalMs: Date.now() - startedAt,
+      itemQueryMs,
+      childQueryMs: 0,
+      mapMs: 0,
+      itemCount: 0,
+      variantCount: 0,
+      addonCount: 0,
+      cacheHit: false,
+    });
+    return [];
+  }
+
+  const itemIds = itemRows.map((row) => row.id);
+  const chunkSize = 250;
+
+  const childQueryStartedAt = Date.now();
+
+  const variantChunkPromises: Array<Promise<VariantRow[]>> = [];
+  const addonChunkPromises: Array<Promise<AddonRow[]>> = [];
+
+  for (let offset = 0; offset < itemIds.length; offset += chunkSize) {
+    const chunk = itemIds.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => "?").join(", ");
+
+    variantChunkPromises.push(
+      query<VariantRow[]>(
+        `SELECT id, item_id, name, price_delta, stock_qty, is_default, sort_order
+         FROM item_variants
+         WHERE item_id IN (${placeholders})`,
+        chunk
+      )
+    );
+
+    addonChunkPromises.push(
+      query<AddonRow[]>(
+        `SELECT id, item_id, name, price, max_select, is_required, is_available, sort_order
+         FROM item_addons
+         WHERE item_id IN (${placeholders})`,
+        chunk
+      )
+    );
+  }
+
+  const [variantChunks, addonChunks] = await Promise.all([
+    Promise.all(variantChunkPromises),
+    Promise.all(addonChunkPromises),
   ]);
+
+  const variantRows = variantChunks.flat();
+  const addonRows = addonChunks.flat();
+
+  variantRows.sort(
+    (left, right) =>
+      left.item_id - right.item_id || left.sort_order - right.sort_order || left.id - right.id
+  );
+
+  addonRows.sort(
+    (left, right) =>
+      left.item_id - right.item_id || left.sort_order - right.sort_order || left.id - right.id
+  );
+
+  const childQueryMs = Date.now() - childQueryStartedAt;
 
   const variantsByItem = new Map<number, ItemVariant[]>();
   const addonsByItem = new Map<number, ItemAddon[]>();
@@ -1162,7 +1285,8 @@ export async function getItemsByRestaurant(restaurantId: number): Promise<Item[]
     addonsByItem.set(mapped.itemId, list);
   }
 
-  return itemRows.map((row) => {
+  const mapStartedAt = Date.now();
+  const items = itemRows.map((row) => {
     const core = mapItemCore(row);
 
     return {
@@ -1171,6 +1295,22 @@ export async function getItemsByRestaurant(restaurantId: number): Promise<Item[]
       addons: addonsByItem.get(row.id) ?? [],
     };
   });
+
+  writeItemListCache(restaurantId, items);
+
+  logSlowItemListTiming({
+    restaurantId,
+    totalMs: Date.now() - startedAt,
+    itemQueryMs,
+    childQueryMs,
+    mapMs: Date.now() - mapStartedAt,
+    itemCount: items.length,
+    variantCount: variantRows.length,
+    addonCount: addonRows.length,
+    cacheHit: false,
+  });
+
+  return items;
 }
 
 export async function createItem(payload: ItemPayload): Promise<Item> {
@@ -1209,6 +1349,8 @@ export async function createItem(payload: ItemPayload): Promise<Item> {
       variantCount: 0,
       addonCount: 0,
     });
+
+    invalidateItemListCache(payload.restaurantId);
 
     return buildItemSnapshot(Number(result.insertId), payload, new Date().toISOString());
   }
@@ -1266,6 +1408,8 @@ export async function createItem(payload: ItemPayload): Promise<Item> {
     addonCount: payload.addons.length,
   });
 
+  invalidateItemListCache(payload.restaurantId);
+
   return buildItemSnapshot(itemId, payload, new Date().toISOString());
 }
 
@@ -1317,6 +1461,8 @@ export async function updateItem(
       throw new InputError("Item not found.", 404);
     }
 
+    invalidateItemListCache(payload.restaurantId);
+
     return buildItemSnapshot(itemId, payload, null);
   }
 
@@ -1364,6 +1510,8 @@ export async function updateItem(
     await replaceAddons(connection, itemId, payload.addons);
   });
 
+  invalidateItemListCache(payload.restaurantId);
+
   return buildItemSnapshot(itemId, payload, null);
 }
 
@@ -1376,6 +1524,8 @@ export async function deleteItem(itemId: number, restaurantId: number): Promise<
   if (result.affectedRows === 0) {
     throw new InputError("Item not found.", 404);
   }
+
+  invalidateItemListCache(restaurantId);
 }
 
 export async function getCustomerMenu(restaurantId: number): Promise<{

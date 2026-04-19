@@ -8,6 +8,7 @@ type AuthPanel = "login" | "register";
 
 interface RestaurantAuthProfile {
   restaurantId: number;
+  restaurantName: string;
   restaurantSlug: string;
   ownerName: string;
   ownerEmail: string;
@@ -287,11 +288,12 @@ export default function RestroLoginPage() {
 
       const ownerQuery = encodeURIComponent(restaurant.ownerName);
       const slugQuery = encodeURIComponent(restaurant.restaurantSlug);
+      const restaurantNameQuery = encodeURIComponent(restaurant.restaurantName);
       const restaurantIdQuery = encodeURIComponent(String(restaurant.restaurantId));
       const emailQuery = encodeURIComponent(restaurant.ownerEmail);
 
       router.push(
-        `/restro/dashboard?slug=${slugQuery}&owner=${ownerQuery}&rid=${restaurantIdQuery}&email=${emailQuery}`
+        `/restro/dashboard?slug=${slugQuery}&owner=${ownerQuery}&rname=${restaurantNameQuery}&rid=${restaurantIdQuery}&email=${emailQuery}`
       );
     } catch (error) {
       notify(error instanceof Error ? error.message : "Sign-in failed.");
