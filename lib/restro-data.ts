@@ -665,6 +665,41 @@ async function insertVariants(
   }
 }
 
+async function insertVariantsDirect(
+  itemId: number,
+  variants: ItemVariantPayload[]
+): Promise<void> {
+  if (variants.length === 0) {
+    return;
+  }
+
+  const chunkSize = 100;
+
+  for (let offset = 0; offset < variants.length; offset += chunkSize) {
+    const chunk = variants.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
+    const params: Array<number | string> = [];
+
+    for (const variant of chunk) {
+      params.push(
+        itemId,
+        variant.name,
+        variant.priceDelta,
+        variant.stockQty,
+        variant.isDefault ? 1 : 0,
+        variant.sortOrder
+      );
+    }
+
+    await execute(
+      `INSERT INTO item_variants
+      (item_id, name, price_delta, stock_qty, is_default, sort_order)
+      VALUES ${placeholders}`,
+      params
+    );
+  }
+}
+
 async function replaceVariants(
   connection: PoolConnection,
   itemId: number,
@@ -713,6 +748,53 @@ async function insertAddons(
       params
     );
   }
+}
+
+async function insertAddonsDirect(itemId: number, addons: ItemAddonPayload[]): Promise<void> {
+  if (addons.length === 0) {
+    return;
+  }
+
+  const chunkSize = 100;
+
+  for (let offset = 0; offset < addons.length; offset += chunkSize) {
+    const chunk = addons.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(", ");
+    const params: Array<number | string> = [];
+
+    for (const addon of chunk) {
+      params.push(
+        itemId,
+        addon.name,
+        addon.price,
+        addon.maxSelect,
+        addon.isRequired ? 1 : 0,
+        addon.isAvailable ? 1 : 0,
+        addon.sortOrder
+      );
+    }
+
+    await execute(
+      `INSERT INTO item_addons
+      (item_id, name, price, max_select, is_required, is_available, sort_order)
+      VALUES ${placeholders}`,
+      params
+    );
+  }
+}
+
+function logSlowItemCreateTiming(details: {
+  totalMs: number;
+  insertItemMs: number;
+  insertChildrenMs: number;
+  variantCount: number;
+  addonCount: number;
+}): void {
+  if (details.totalMs < 900) {
+    return;
+  }
+
+  console.info("[restro-items] slow-create", details);
 }
 
 async function replaceAddons(
@@ -1092,7 +1174,10 @@ export async function getItemsByRestaurant(restaurantId: number): Promise<Item[]
 }
 
 export async function createItem(payload: ItemPayload): Promise<Item> {
+  const startedAt = Date.now();
+
   if (payload.variants.length === 0 && payload.addons.length === 0) {
+    const insertStartedAt = Date.now();
     const result = await execute(
       `INSERT INTO items
       (restaurant_id, category_id, name, description, image_url, base_price,
@@ -1117,40 +1202,68 @@ export async function createItem(payload: ItemPayload): Promise<Item> {
       ]
     );
 
+    logSlowItemCreateTiming({
+      totalMs: Date.now() - startedAt,
+      insertItemMs: Date.now() - insertStartedAt,
+      insertChildrenMs: 0,
+      variantCount: 0,
+      addonCount: 0,
+    });
+
     return buildItemSnapshot(Number(result.insertId), payload, new Date().toISOString());
   }
 
-  const itemId = await withTransaction(async (connection) => {
-    const [result] = await connection.execute<ResultSetHeader>(
-      `INSERT INTO items
-      (restaurant_id, category_id, name, description, image_url, base_price,
-       stock_qty, sku, is_veg, is_available, offer_title, offer_discount_percent,
-       offer_start_at, offer_end_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        payload.restaurantId,
-        payload.categoryId,
-        payload.name,
-        payload.description,
-        payload.imageUrl,
-        payload.basePrice,
-        payload.stockQty,
-        payload.sku,
-        payload.isVeg ? 1 : 0,
-        payload.isAvailable ? 1 : 0,
-        payload.offerTitle,
-        payload.offerDiscountPercent,
-        payload.offerStartAt,
-        payload.offerEndAt,
-      ]
+  const insertStartedAt = Date.now();
+  const result = await execute(
+    `INSERT INTO items
+    (restaurant_id, category_id, name, description, image_url, base_price,
+     stock_qty, sku, is_veg, is_available, offer_title, offer_discount_percent,
+     offer_start_at, offer_end_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      payload.restaurantId,
+      payload.categoryId,
+      payload.name,
+      payload.description,
+      payload.imageUrl,
+      payload.basePrice,
+      payload.stockQty,
+      payload.sku,
+      payload.isVeg ? 1 : 0,
+      payload.isAvailable ? 1 : 0,
+      payload.offerTitle,
+      payload.offerDiscountPercent,
+      payload.offerStartAt,
+      payload.offerEndAt,
+    ]
+  );
+  const insertItemMs = Date.now() - insertStartedAt;
+  const itemId = Number(result.insertId);
+
+  const childrenStartedAt = Date.now();
+
+  try {
+    await Promise.all([
+      insertVariantsDirect(itemId, payload.variants),
+      insertAddonsDirect(itemId, payload.addons),
+    ]);
+  } catch (error) {
+    await execute(
+      `DELETE FROM items
+       WHERE id = ? AND restaurant_id = ?
+       LIMIT 1`,
+      [itemId, payload.restaurantId]
     );
 
-    const insertedId = Number(result.insertId);
+    throw error;
+  }
 
-    await insertVariants(connection, insertedId, payload.variants);
-    await insertAddons(connection, insertedId, payload.addons);
-
-    return insertedId;
+  logSlowItemCreateTiming({
+    totalMs: Date.now() - startedAt,
+    insertItemMs,
+    insertChildrenMs: Date.now() - childrenStartedAt,
+    variantCount: payload.variants.length,
+    addonCount: payload.addons.length,
   });
 
   return buildItemSnapshot(itemId, payload, new Date().toISOString());

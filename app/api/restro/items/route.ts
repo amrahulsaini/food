@@ -30,10 +30,28 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   try {
+    const startedAt = Date.now();
     await ensureRestroSchema();
+
+    const parseStartedAt = Date.now();
     const body = await request.json();
     const payload = parseItemPayload(body);
+    const parseMs = Date.now() - parseStartedAt;
+
+    const createStartedAt = Date.now();
     const item = await createItem(payload);
+    const createMs = Date.now() - createStartedAt;
+    const totalMs = Date.now() - startedAt;
+
+    if (totalMs >= 900) {
+      console.info("[restro-items] slow-post-route", {
+        totalMs,
+        parseMs,
+        createMs,
+        variantCount: payload.variants.length,
+        addonCount: payload.addons.length,
+      });
+    }
 
     return Response.json(
       {
