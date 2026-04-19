@@ -254,11 +254,12 @@ function RestroDashboardContent() {
     searchParams.get("slug")?.trim().toLowerCase() ?? "";
   const ownerName = searchParams.get("owner")?.trim() || "Manager";
   const toastTimerRef = useRef<number | null>(null);
+  const autoSyncDoneRef = useRef(false);
   const categoryUploadRequestRef = useRef(0);
   const itemUploadRequestRef = useRef(0);
   const itemImageInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [restaurantSlugInput, setRestaurantSlugInput] = useState(initialRestaurantSlug);
+  const [restaurantSlugInput] = useState(initialRestaurantSlug);
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
   const [status, setStatus] = useState("Enter restaurant slug and click Sync Data.");
   const [toast, setToast] = useState<string | null>(null);
@@ -341,6 +342,22 @@ function RestroDashboardContent() {
       };
     });
   }, [selectedCategoryId, editingItemId]);
+
+  useEffect(() => {
+    if (autoSyncDoneRef.current) {
+      return;
+    }
+
+    if (!/^[a-z0-9]{6,8}$/.test(restaurantSlugInput)) {
+      updateStatus("Restaurant slug missing. Open dashboard through approved login.");
+      return;
+    }
+
+    autoSyncDoneRef.current = true;
+    refreshData().catch(() => {
+      updateStatus("Unable to sync dashboard.");
+    });
+  }, [restaurantSlugInput]);
 
   function scrollToSection(section: "categories" | "items"): void {
     setActiveSection(section);
@@ -938,59 +955,13 @@ function RestroDashboardContent() {
       ) : null}
 
       <main className="flex w-full flex-1 flex-col gap-6 pb-10 pt-6">
-        <section className="px-4 md:px-6 xl:px-8">
-          <div className="glass-panel p-5 md:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="brand-badge">Restro Dashboard</p>
-              <h1 className="mt-3 text-2xl font-black text-[var(--brand-deep)] md:text-4xl">
-                Welcome, {ownerName}
-              </h1>
-              <p className="mt-2 text-sm text-[#6a3f2c]">
-                Control categories, menu items, stock, variants, add-ons, and offer
-                windows.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 md:grid-cols-[220px_1fr_auto]">
-            <input
-              className="food-input"
-              value={restaurantSlugInput}
-              onChange={(event) => {
-                setRestaurantSlugInput(event.target.value.toLowerCase());
-              }}
-              placeholder="restaurant slug"
-            />
-            <p className="rounded-xl bg-[#f8efe8] px-3 py-2 text-sm text-[#68404d]">
-              {status}
-            </p>
-            <button
-              type="button"
-              className="food-btn"
-              onClick={() => {
-                refreshData().catch(() => {
-                  updateStatus("Unable to sync dashboard.");
-                });
-              }}
-              disabled={loading}
-            >
-              {loading ? (
-                <span className="inline-flex items-center gap-2">
-                  <ThreeDotSpinner />
-                  Syncing
-                </span>
-              ) : (
-                "Sync Data"
-              )}
-            </button>
-          </div>
-          </div>
-        </section>
-
         <section className="dashboard-shell grid gap-5 xl:grid-cols-[280px_1fr]">
           <aside className="dashboard-side-menu elevated-card p-4">
             <p className="brand-badge">Navigation</p>
+            <div className="sidebar-owner mt-3">
+              <p className="sidebar-owner-name">{ownerName}</p>
+              <p className="sidebar-owner-slug">Slug: {restaurantSlugInput}</p>
+            </div>
 
             <div className="sidebar-menu-list mt-4">
               <button
@@ -1003,8 +974,8 @@ function RestroDashboardContent() {
                 }}
               >
                 <span className="sidebar-menu-left">
-                  <SidebarIcon name="home" />
-                  Home
+                  <SidebarIcon name="categories" />
+                  Categories
                 </span>
                 <span className="status-pill">{categories.length}</span>
               </button>
@@ -1097,7 +1068,7 @@ function RestroDashboardContent() {
               >
                 <span className="sidebar-menu-left">
                   {loading ? <ThreeDotSpinner /> : <SidebarIcon name="sync" />}
-                  {loading ? "Syncing" : "Sync Data"}
+                  {loading ? "Refreshing" : "Refresh"}
                 </span>
               </button>
 
@@ -1107,6 +1078,11 @@ function RestroDashboardContent() {
                   Back to Login
                 </span>
               </Link>
+            </div>
+
+            <div className="sidebar-status mt-3">
+              <p className="sidebar-status-title">Status</p>
+              <p className="sidebar-status-text">{status}</p>
             </div>
           </aside>
 

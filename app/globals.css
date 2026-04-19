@@ -189,6 +189,41 @@ a {
   gap: 0.35rem;
 }
 
+.sidebar-owner,
+.sidebar-status {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 0.55rem 0.65rem;
+}
+
+.sidebar-owner-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #3b2117;
+}
+
+.sidebar-owner-slug {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: #734634;
+}
+
+.sidebar-status-title {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #643527;
+}
+
+.sidebar-status-text {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #5f3829;
+}
+
 .sidebar-menu-left {
   display: inline-flex;
   min-width: 0;
