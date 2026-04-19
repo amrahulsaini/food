@@ -1671,34 +1671,38 @@ function RestroDashboardContent() {
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-3">
-                    <input
-                      className="food-input"
-                      type="number"
-                      min={0.01}
-                      step="0.01"
-                      required
-                      value={itemForm.basePrice}
-                      onChange={(event) => {
-                        setItemForm((prev) => ({
-                          ...prev,
-                          basePrice: Number(event.target.value || 0),
-                        }));
-                      }}
-                      placeholder="Price :"
-                    />
-                    <input
-                      className="food-input"
-                      type="number"
-                      min={0}
-                      value={itemForm.stockQty}
-                      onChange={(event) => {
-                        setItemForm((prev) => ({
-                          ...prev,
-                          stockQty: Number(event.target.value || 0),
-                        }));
-                      }}
-                      placeholder="Stock :"
-                    />
+                    <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-[#7a4d3a]">
+                      Price
+                      <input
+                        className="food-input"
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        required
+                        value={itemForm.basePrice}
+                        onChange={(event) => {
+                          setItemForm((prev) => ({
+                            ...prev,
+                            basePrice: Number(event.target.value || 0),
+                          }));
+                        }}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-[#7a4d3a]">
+                      Stock
+                      <input
+                        className="food-input"
+                        type="number"
+                        min={0}
+                        value={itemForm.stockQty}
+                        onChange={(event) => {
+                          setItemForm((prev) => ({
+                            ...prev,
+                            stockQty: Number(event.target.value || 0),
+                          }));
+                        }}
+                      />
+                    </label>
                     <input
                       className="food-input"
                       placeholder="SKU"
@@ -1828,39 +1832,43 @@ function RestroDashboardContent() {
                               });
                             }}
                           />
-                          <input
-                            className="food-input"
-                            type="number"
-                            step="0.01"
-                            placeholder="Price :"
-                            value={variant.priceDelta}
-                            onChange={(event) => {
-                              setItemForm((prev) => {
-                                const next = [...prev.variants];
-                                next[index] = {
-                                  ...next[index],
-                                  priceDelta: Number(event.target.value || 0),
-                                };
-                                return { ...prev, variants: next };
-                              });
-                            }}
-                          />
-                          <input
-                            className="food-input"
-                            type="number"
-                            placeholder="Stock :"
-                            value={variant.stockQty}
-                            onChange={(event) => {
-                              setItemForm((prev) => {
-                                const next = [...prev.variants];
-                                next[index] = {
-                                  ...next[index],
-                                  stockQty: Number(event.target.value || 0),
-                                };
-                                return { ...prev, variants: next };
-                              });
-                            }}
-                          />
+                          <label className="grid gap-1 text-[11px] font-semibold uppercase tracking-wide text-[#7a4d3a]">
+                            Price
+                            <input
+                              className="food-input"
+                              type="number"
+                              step="0.01"
+                              value={variant.priceDelta}
+                              onChange={(event) => {
+                                setItemForm((prev) => {
+                                  const next = [...prev.variants];
+                                  next[index] = {
+                                    ...next[index],
+                                    priceDelta: Number(event.target.value || 0),
+                                  };
+                                  return { ...prev, variants: next };
+                                });
+                              }}
+                            />
+                          </label>
+                          <label className="grid gap-1 text-[11px] font-semibold uppercase tracking-wide text-[#7a4d3a]">
+                            Stock
+                            <input
+                              className="food-input"
+                              type="number"
+                              value={variant.stockQty}
+                              onChange={(event) => {
+                                setItemForm((prev) => {
+                                  const next = [...prev.variants];
+                                  next[index] = {
+                                    ...next[index],
+                                    stockQty: Number(event.target.value || 0),
+                                  };
+                                  return { ...prev, variants: next };
+                                });
+                              }}
+                            />
+                          </label>
                           <label className="inline-flex items-center gap-2 text-xs text-[#613729]">
                             <input
                               type="checkbox"
@@ -1929,23 +1937,25 @@ function RestroDashboardContent() {
                               });
                             }}
                           />
-                          <input
-                            className="food-input"
-                            type="number"
-                            step="0.01"
-                            placeholder="Price :"
-                            value={addon.price}
-                            onChange={(event) => {
-                              setItemForm((prev) => {
-                                const next = [...prev.addons];
-                                next[index] = {
-                                  ...next[index],
-                                  price: Number(event.target.value || 0),
-                                };
-                                return { ...prev, addons: next };
-                              });
-                            }}
-                          />
+                          <label className="grid gap-1 text-[11px] font-semibold uppercase tracking-wide text-[#7a4d3a]">
+                            Price
+                            <input
+                              className="food-input"
+                              type="number"
+                              step="0.01"
+                              value={addon.price}
+                              onChange={(event) => {
+                                setItemForm((prev) => {
+                                  const next = [...prev.addons];
+                                  next[index] = {
+                                    ...next[index],
+                                    price: Number(event.target.value || 0),
+                                  };
+                                  return { ...prev, addons: next };
+                                });
+                              }}
+                            />
+                          </label>
                           <input
                             className="food-input"
                             type="number"
