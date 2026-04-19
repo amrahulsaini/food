@@ -961,36 +961,36 @@ export async function deleteCategory(
 }
 
 export async function getItemsByRestaurant(restaurantId: number): Promise<Item[]> {
-  const itemRows = await query<ItemRow[]>(
-    `SELECT i.id, i.restaurant_id, i.category_id, c.name AS category_name,
-            i.name, i.description, i.image_url, i.base_price, i.stock_qty,
-            i.sku, i.is_veg, i.is_available,
-            i.offer_title, i.offer_discount_percent, i.offer_start_at, i.offer_end_at,
-            i.created_at, i.updated_at
-     FROM items i
-     INNER JOIN categories c ON c.id = i.category_id
-     WHERE i.restaurant_id = ?
-     ORDER BY i.updated_at DESC, i.id DESC`,
-    [restaurantId]
-  );
-
-  const variantRows = await query<VariantRow[]>(
-    `SELECT v.id, v.item_id, v.name, v.price_delta, v.stock_qty, v.is_default, v.sort_order
-     FROM item_variants v
-     INNER JOIN items i ON i.id = v.item_id
-     WHERE i.restaurant_id = ?
-     ORDER BY v.sort_order ASC, v.id ASC`,
-    [restaurantId]
-  );
-
-  const addonRows = await query<AddonRow[]>(
-    `SELECT a.id, a.item_id, a.name, a.price, a.max_select, a.is_required, a.is_available, a.sort_order
-     FROM item_addons a
-     INNER JOIN items i ON i.id = a.item_id
-     WHERE i.restaurant_id = ?
-     ORDER BY a.sort_order ASC, a.id ASC`,
-    [restaurantId]
-  );
+  const [itemRows, variantRows, addonRows] = await Promise.all([
+    query<ItemRow[]>(
+      `SELECT i.id, i.restaurant_id, i.category_id, c.name AS category_name,
+              i.name, i.description, i.image_url, i.base_price, i.stock_qty,
+              i.sku, i.is_veg, i.is_available,
+              i.offer_title, i.offer_discount_percent, i.offer_start_at, i.offer_end_at,
+              i.created_at, i.updated_at
+       FROM items i
+       INNER JOIN categories c ON c.id = i.category_id
+       WHERE i.restaurant_id = ?
+       ORDER BY i.updated_at DESC, i.id DESC`,
+      [restaurantId]
+    ),
+    query<VariantRow[]>(
+      `SELECT v.id, v.item_id, v.name, v.price_delta, v.stock_qty, v.is_default, v.sort_order
+       FROM item_variants v
+       INNER JOIN items i ON i.id = v.item_id
+       WHERE i.restaurant_id = ?
+       ORDER BY v.sort_order ASC, v.id ASC`,
+      [restaurantId]
+    ),
+    query<AddonRow[]>(
+      `SELECT a.id, a.item_id, a.name, a.price, a.max_select, a.is_required, a.is_available, a.sort_order
+       FROM item_addons a
+       INNER JOIN items i ON i.id = a.item_id
+       WHERE i.restaurant_id = ?
+       ORDER BY a.sort_order ASC, a.id ASC`,
+      [restaurantId]
+    ),
+  ]);
 
   const variantsByItem = new Map<number, ItemVariant[]>();
   const addonsByItem = new Map<number, ItemAddon[]>();
@@ -1154,21 +1154,22 @@ async function getItemById(
     return null;
   }
 
-  const variantRows = await query<VariantRow[]>(
-    `SELECT id, item_id, name, price_delta, stock_qty, is_default, sort_order
-     FROM item_variants
-     WHERE item_id = ?
-     ORDER BY sort_order ASC, id ASC`,
-    [itemId]
-  );
-
-  const addonRows = await query<AddonRow[]>(
-    `SELECT id, item_id, name, price, max_select, is_required, is_available, sort_order
-     FROM item_addons
-     WHERE item_id = ?
-     ORDER BY sort_order ASC, id ASC`,
-    [itemId]
-  );
+  const [variantRows, addonRows] = await Promise.all([
+    query<VariantRow[]>(
+      `SELECT id, item_id, name, price_delta, stock_qty, is_default, sort_order
+       FROM item_variants
+       WHERE item_id = ?
+       ORDER BY sort_order ASC, id ASC`,
+      [itemId]
+    ),
+    query<AddonRow[]>(
+      `SELECT id, item_id, name, price, max_select, is_required, is_available, sort_order
+       FROM item_addons
+       WHERE item_id = ?
+       ORDER BY sort_order ASC, id ASC`,
+      [itemId]
+    ),
+  ]);
 
   return {
     ...mapItemCore(itemRow),
