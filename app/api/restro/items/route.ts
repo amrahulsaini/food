@@ -10,14 +10,44 @@ import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 
+function isMissingSchemaError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const dbError = error as { code?: string; message?: string };
+  const message = String(dbError.message ?? "").toLowerCase();
+
+  return (
+    dbError.code === "ER_NO_SUCH_TABLE" ||
+    dbError.code === "ER_BAD_FIELD_ERROR" ||
+    message.includes("doesn't exist") ||
+    message.includes("unknown column")
+  );
+}
+
+async function withSchemaFallback<T>(runner: () => Promise<T>): Promise<T> {
+  try {
+    return await runner();
+  } catch (error) {
+    if (!isMissingSchemaError(error)) {
+      throw error;
+    }
+
+    await ensureRestroSchema();
+    return await runner();
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
-    await ensureRestroSchema();
     const restaurantId = parseRestaurantId(
       request.nextUrl.searchParams.get("restaurantId")
     );
 
-    const items = await getItemsByRestaurant(restaurantId);
+    const items = await withSchemaFallback(async () =>
+      await getItemsByRestaurant(restaurantId)
+    );
 
     return Response.json({
       ok: true,
@@ -31,7 +61,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
   try {
     const startedAt = Date.now();
-    await ensureRestroSchema();
 
     const parseStartedAt = Date.now();
     const body = await request.json();
@@ -39,7 +68,7 @@ export async function POST(request: Request) {
     const parseMs = Date.now() - parseStartedAt;
 
     const createStartedAt = Date.now();
-    const item = await createItem(payload);
+    const item = await withSchemaFallback(async () => await createItem(payload));
     const createMs = Date.now() - createStartedAt;
     const totalMs = Date.now() - startedAt;
 
