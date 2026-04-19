@@ -89,12 +89,13 @@ a {
 
 .dashboard-side-menu {
   position: sticky;
-  top: 1.2rem;
+  top: 0;
   align-self: start;
-  max-height: calc(100vh - 2.4rem);
+  max-height: 100vh;
   overflow-y: auto;
-  background: #f3f4f6;
-  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 250, 242, 0.98);
+  border-color: rgba(0, 0, 0, 0.14);
+  border-radius: 0 1rem 1rem 0;
 }
 
 @media (max-width: 1279px) {
@@ -102,6 +103,7 @@ a {
     position: static;
     max-height: none;
     overflow: visible;
+    border-radius: 1rem;
   }
 }
 
@@ -153,26 +155,26 @@ a {
   justify-content: space-between;
   gap: 0.7rem;
   border-radius: 0.85rem;
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.72);
   padding: 0.68rem 0.8rem;
   font-size: 0.92rem;
   font-weight: 600;
-  color: #253744;
+  color: #2a1a12;
   transition: border-color 120ms ease, transform 120ms ease, background 120ms ease, color 120ms ease;
 }
 
 .dashboard-nav-btn:hover {
-  border-color: rgba(0, 0, 0, 0.1);
-  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(209, 15, 47, 0.55);
+  background: rgba(255, 243, 238, 0.95);
   transform: translateY(-1px);
 }
 
 .dashboard-nav-btn-active {
-  border-color: transparent;
-  background: #263d4b;
-  color: #f7fbff;
-  box-shadow: 0 8px 16px rgba(38, 61, 75, 0.25);
+  border-color: rgba(209, 15, 47, 0.72);
+  background: rgba(209, 15, 47, 0.14);
+  color: #751326;
+  box-shadow: inset 3px 0 0 rgba(209, 15, 47, 0.9);
 }
 
 .dashboard-nav-btn svg {
@@ -203,7 +205,7 @@ a {
 .menu-sidebar-panel {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 0.9rem;
-  background: rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.8);
   padding: 0.7rem;
 }
 
@@ -321,8 +323,8 @@ a {
 }
 
 .dashboard-nav-btn-active .status-pill {
-  background: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+  background: rgba(209, 15, 47, 0.22);
+  color: #6e0c20;
 }
 
 .dot-spinner {

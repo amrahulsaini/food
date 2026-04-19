@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type AuthPanel = "login" | "register";
 
@@ -101,6 +101,14 @@ export default function RestroLoginPage() {
   const [uploadedRestaurantImageUrl, setUploadedRestaurantImageUrl] = useState("");
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [isImageUploading, setIsImageUploading] = useState(false);
+
+  useEffect(() => {
+    void fetch("/api/restro/bootstrap?warm=1", {
+      cache: "no-store",
+    }).catch(() => {
+      // Warm-up is best-effort.
+    });
+  }, []);
 
   function notify(message: string): void {
     setStatus(message);

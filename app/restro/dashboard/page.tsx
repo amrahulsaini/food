@@ -937,8 +937,9 @@ function RestroDashboardContent() {
         </div>
       ) : null}
 
-      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 pb-10 pt-8 md:px-8">
-        <section className="glass-panel p-5 md:p-7">
+      <main className="flex w-full flex-1 flex-col gap-6 pb-10 pt-6">
+        <section className="px-4 md:px-6 xl:px-8">
+          <div className="glass-panel p-5 md:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="brand-badge">Restro Dashboard</p>
@@ -983,6 +984,7 @@ function RestroDashboardContent() {
                 "Sync Data"
               )}
             </button>
+          </div>
           </div>
         </section>
 
@@ -1108,7 +1110,7 @@ function RestroDashboardContent() {
             </div>
           </aside>
 
-          <div className="grid gap-5">
+          <div className="grid gap-5 px-4 md:px-6 xl:pl-6 xl:pr-8">
             <article
               className={`elevated-card p-5 ${
                 activeSection === "categories" ? "block" : "hidden"

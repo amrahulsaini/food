@@ -1,6 +1,5 @@
 import { errorResponse } from "@/lib/api-response";
 import {
-  ensureRestroAuthSchema,
   loginRestaurantAccount,
   parseRestaurantLoginPayload,
 } from "@/lib/restroAuth";
@@ -9,7 +8,6 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    await ensureRestroAuthSchema();
     const body = await request.json();
     const payload = parseRestaurantLoginPayload(body);
     const restaurant = await loginRestaurantAccount(payload);

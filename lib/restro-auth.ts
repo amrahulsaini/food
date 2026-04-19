@@ -15,6 +15,13 @@ const ACCOUNT_STATUSES = ["approved", "suspended", "rejected", "on_hold"] as con
 const APPROVED_STATUS = "approved";
 const SLUG_PATTERN = /^[a-z0-9]{6,8}$/;
 const RESTRO_AUTH_MIGRATION_FLAG = "restro_auth_legacy_migration_v2";
+const FAST_HASH_PREFIX = "s2";
+const FAST_SCRYPT_OPTIONS = {
+  N: 1024,
+  r: 8,
+  p: 1,
+  maxmem: 32 * 1024 * 1024,
+};
 
 type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 
@@ -56,12 +63,9 @@ interface RestaurantAuthRow extends RowDataPacket {
   updated_at: Date | string | null;
 }
 
-interface RestaurantAccountRow extends RowDataPacket {
-  id: number;
-  restaurant_id: number;
-  owner_email: string;
+interface RestaurantLoginRow extends RestaurantAuthRow {
+  account_id: number;
   password_hash: string;
-  account_status: string;
 }
 
 interface NewRestaurantAccountResult extends ResultSetHeader {
@@ -304,25 +308,49 @@ function isDuplicateFor(error: unknown, keyName: string): boolean {
 
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
-  const derived = (await scrypt(password, salt, 64)) as Buffer;
-  return `${salt}:${derived.toString("hex")}`;
+  const derived = (await scrypt(password, salt, 64, FAST_SCRYPT_OPTIONS)) as Buffer;
+  return `${FAST_HASH_PREFIX}:${salt}:${derived.toString("hex")}`;
 }
 
-async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
-  const [salt, hash] = storedHash.split(":");
+async function verifyPassword(
+  password: string,
+  storedHash: string
+): Promise<{ matches: boolean; shouldUpgrade: boolean }> {
+  const parts = storedHash.split(":");
 
-  if (!salt || !hash) {
-    return false;
+  if (parts.length === 3 && parts[0] === FAST_HASH_PREFIX) {
+    const [, salt, hash] = parts;
+    const derived = (await scrypt(password, salt, 64, FAST_SCRYPT_OPTIONS)) as Buffer;
+    const storedBuffer = Buffer.from(hash, "hex");
+
+    if (storedBuffer.length !== derived.length) {
+      return { matches: false, shouldUpgrade: false };
+    }
+
+    return {
+      matches: timingSafeEqual(derived, storedBuffer),
+      shouldUpgrade: false,
+    };
   }
 
-  const derived = (await scrypt(password, salt, 64)) as Buffer;
-  const storedBuffer = Buffer.from(hash, "hex");
+  if (parts.length === 2) {
+    const [salt, hash] = parts;
+    const derived = (await scrypt(password, salt, 64)) as Buffer;
+    const storedBuffer = Buffer.from(hash, "hex");
 
-  if (storedBuffer.length !== derived.length) {
-    return false;
+    if (storedBuffer.length !== derived.length) {
+      return { matches: false, shouldUpgrade: false };
+    }
+
+    const matches = timingSafeEqual(derived, storedBuffer);
+
+    return {
+      matches,
+      shouldUpgrade: matches,
+    };
   }
 
-  return timingSafeEqual(derived, storedBuffer);
+  return { matches: false, shouldUpgrade: false };
 }
 
 async function runRestroAuthSchemaSetup(): Promise<void> {
@@ -915,10 +943,29 @@ export async function loginRestaurantAccount(
   const normalizedEmail = normalizeEmail(payload.ownerEmail);
   const normalizedPassword = normalizePassword(payload.ownerPassword);
 
-  const accounts = await query<RestaurantAccountRow[]>(
-    `SELECT id, restaurant_id, owner_email, password_hash, account_status
-     FROM restaurant_accounts
-     WHERE owner_email = ?
+  const accounts = await query<RestaurantLoginRow[]>(
+    `SELECT
+      a.id AS account_id,
+      r.id AS restaurant_id,
+      r.name AS restaurant_name,
+      r.slug AS restaurant_slug,
+      r.image_url AS restaurant_image_url,
+      a.owner_name,
+      a.owner_mobile,
+      a.owner_email,
+      a.business_address,
+      a.city,
+      a.postal_code,
+      a.gstin,
+      a.sgst_percent,
+      a.cgst_percent,
+      a.account_status,
+      a.created_at,
+      a.updated_at,
+      a.password_hash
+     FROM restaurant_accounts a
+     INNER JOIN restaurants r ON r.id = a.restaurant_id
+     WHERE a.owner_email = ?
      LIMIT 1`,
     [normalizedEmail]
   );
@@ -929,10 +976,26 @@ export async function loginRestaurantAccount(
     throw new InputError("Invalid email or password.", 401);
   }
 
-  const passwordMatches = await verifyPassword(normalizedPassword, account.password_hash);
+  const passwordResult = await verifyPassword(normalizedPassword, account.password_hash);
 
-  if (!passwordMatches) {
+  if (!passwordResult.matches) {
     throw new InputError("Invalid email or password.", 401);
+  }
+
+  if (passwordResult.shouldUpgrade) {
+    void hashPassword(normalizedPassword)
+      .then(async (nextHash) => {
+        await execute(
+          `UPDATE restaurant_accounts
+           SET password_hash = ?
+           WHERE id = ?
+           LIMIT 1`,
+          [nextHash, account.account_id]
+        );
+      })
+      .catch(() => {
+        // Ignore background hash-upgrade errors; login already succeeded.
+      });
   }
 
   const accountStatus = normalizeStatus(account.account_status);
@@ -962,5 +1025,5 @@ export async function loginRestaurantAccount(
     throw new InputError("Your account is not approved for login.", 403);
   }
 
-  return await readRestaurantProfileById(account.restaurant_id);
+  return mapRestaurantProfile(account);
 }
