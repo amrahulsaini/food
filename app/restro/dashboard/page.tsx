@@ -962,8 +962,7 @@ function RestroDashboardContent() {
       <main className="flex w-full flex-1 flex-col gap-6 pb-10">
         <section className="dashboard-shell grid min-h-screen gap-5 xl:grid-cols-[280px_1fr]">
           <aside className="dashboard-side-menu elevated-card p-4">
-            <p className="brand-badge">Navigation</p>
-            <div className="sidebar-owner mt-3">
+            <div className="sidebar-owner">
               <p className="sidebar-owner-name">{ownerName}</p>
               <p className="sidebar-owner-slug">Slug: {restaurantSlugInput}</p>
             </div>
@@ -1091,7 +1090,7 @@ function RestroDashboardContent() {
             </div>
           </aside>
 
-          <div className="grid gap-5 px-4 md:px-6 xl:pl-6 xl:pr-8">
+          <div className="grid gap-5">
             <article
               className={`elevated-card p-5 ${
                 activeSection === "categories" ? "block" : "hidden"
