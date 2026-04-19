@@ -1003,7 +1003,7 @@ function RestroDashboardContent() {
             <div className="sidebar-owner">
               <p className="sidebar-owner-name">{ownerName}</p>
               <p className="sidebar-owner-meta">
-                Restro ID: {restaurantId ?? "Not synced"}
+                Slug ID: {restaurantSlugInput || "Not available"}
               </p>
               <p className="sidebar-owner-meta">
                 Email: {ownerEmail || "Not available"}
@@ -1124,8 +1124,8 @@ function RestroDashboardContent() {
                 className="dashboard-nav-btn"
                 onClick={() => {
                   updateStatus(
-                    `Profile: ${ownerName} | ${ownerEmail || "Email unavailable"} | Restro ID: ${
-                      restaurantId ?? "Not synced"
+                    `Profile: ${ownerName} | ${ownerEmail || "Email unavailable"} | Slug ID: ${
+                      restaurantSlugInput || "Not available"
                     }`
                   );
                 }}
