@@ -175,6 +175,16 @@ async function readMessage(response: Response): Promise<string> {
   }
 }
 
+function ThreeDotSpinner({ className = "" }: { className?: string }) {
+  return (
+    <span className={`dot-spinner ${className}`} aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 function RestroDashboardContent() {
   const searchParams = useSearchParams();
   const initialRestaurantSlug =
@@ -183,12 +193,17 @@ function RestroDashboardContent() {
   const toastTimerRef = useRef<number | null>(null);
   const categoryUploadRequestRef = useRef(0);
   const itemUploadRequestRef = useRef(0);
+  const categorySectionRef = useRef<HTMLElement | null>(null);
+  const itemSectionRef = useRef<HTMLElement | null>(null);
 
   const [restaurantSlugInput, setRestaurantSlugInput] = useState(initialRestaurantSlug);
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
   const [status, setStatus] = useState("Enter restaurant slug and click Sync Data.");
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activeSection, setActiveSection] = useState<"categories" | "items">(
+    "categories"
+  );
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -197,13 +212,24 @@ function RestroDashboardContent() {
   const [categoryImageFile, setCategoryImageFile] = useState<File | null>(null);
   const [categoryUploadProgress, setCategoryUploadProgress] = useState(0);
   const [isCategoryImageUploading, setIsCategoryImageUploading] = useState(false);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
 
   const [itemForm, setItemForm] = useState<ItemForm>(emptyItemForm(null));
   const [itemImageFile, setItemImageFile] = useState<File | null>(null);
   const [itemUploadProgress, setItemUploadProgress] = useState(0);
   const [isItemImageUploading, setIsItemImageUploading] = useState(false);
+  const [isSavingItem, setIsSavingItem] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
+
+  function scrollToSection(section: "categories" | "items"): void {
+    setActiveSection(section);
+
+    const target = section === "categories" ? categorySectionRef.current : itemSectionRef.current;
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   function updateStatus(message: string): void {
     setStatus(message);
@@ -464,6 +490,8 @@ function RestroDashboardContent() {
     }
 
     try {
+      setIsSavingCategory(true);
+
       const endpoint = editingCategoryId
         ? `/api/restro/categories/${editingCategoryId}`
         : "/api/restro/categories";
@@ -524,6 +552,8 @@ function RestroDashboardContent() {
       updateStatus(editingCategoryId ? "Category updated." : "Category created.");
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to save category.");
+    } finally {
+      setIsSavingCategory(false);
     }
   }
 
@@ -539,6 +569,8 @@ function RestroDashboardContent() {
     }
 
     try {
+      setDeletingCategoryId(categoryId);
+
       const response = await fetch(
         `/api/restro/categories/${categoryId}?restaurantId=${restaurantId}`,
         {
@@ -564,11 +596,14 @@ function RestroDashboardContent() {
       updateStatus("Category deleted.");
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to delete category.");
+    } finally {
+      setDeletingCategoryId(null);
     }
   }
 
   function editCategory(category: Category): void {
     categoryUploadRequestRef.current += 1;
+    setActiveSection("categories");
     setEditingCategoryId(category.id);
     setCategoryForm({
       name: category.name,
@@ -616,6 +651,8 @@ function RestroDashboardContent() {
       }));
 
     try {
+      setIsSavingItem(true);
+
       const endpoint = editingItemId ? `/api/restro/items/${editingItemId}` : "/api/restro/items";
       const method = editingItemId ? "PUT" : "POST";
 
@@ -667,6 +704,8 @@ function RestroDashboardContent() {
       updateStatus(editingItemId ? "Item updated." : "Item created.");
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to save item.");
+    } finally {
+      setIsSavingItem(false);
     }
   }
 
@@ -682,6 +721,8 @@ function RestroDashboardContent() {
     }
 
     try {
+      setDeletingItemId(itemId);
+
       const response = await fetch(
         `/api/restro/items/${itemId}?restaurantId=${restaurantId}`,
         {
@@ -697,11 +738,14 @@ function RestroDashboardContent() {
       updateStatus("Item deleted.");
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to delete item.");
+    } finally {
+      setDeletingItemId(null);
     }
   }
 
   function editItem(item: Item): void {
     itemUploadRequestRef.current += 1;
+    setActiveSection("items");
     setEditingItemId(item.id);
 
     setItemForm({
@@ -800,13 +844,61 @@ function RestroDashboardContent() {
               }}
               disabled={loading}
             >
-              {loading ? "Syncing..." : "Sync Data"}
+              {loading ? (
+                <span className="inline-flex items-center gap-2">
+                  <ThreeDotSpinner />
+                  Syncing
+                </span>
+              ) : (
+                "Sync Data"
+              )}
             </button>
           </div>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-2">
-          <article className="elevated-card p-5">
+        <section className="grid gap-5 xl:grid-cols-[230px_1fr]">
+          <aside className="elevated-card h-fit p-4 xl:sticky xl:top-6">
+            <p className="brand-badge">Navigation</p>
+
+            <div className="mt-4 space-y-2">
+              <button
+                type="button"
+                className={`dashboard-nav-btn ${
+                  activeSection === "categories" ? "dashboard-nav-btn-active" : ""
+                }`}
+                onClick={() => {
+                  scrollToSection("categories");
+                }}
+              >
+                Categories
+                <span className="status-pill">{categories.length}</span>
+              </button>
+
+              <button
+                type="button"
+                className={`dashboard-nav-btn ${
+                  activeSection === "items" ? "dashboard-nav-btn-active" : ""
+                }`}
+                onClick={() => {
+                  scrollToSection("items");
+                }}
+              >
+                Items
+                <span className="status-pill">{items.length}</span>
+              </button>
+            </div>
+
+            <p className="mt-4 text-xs text-[#6c4633]">
+              Use these quick actions to jump across dashboard sections.
+            </p>
+          </aside>
+
+          <div className="grid gap-5">
+            <article
+              id="categories-section"
+              ref={categorySectionRef}
+              className="elevated-card scroll-mt-24 p-5"
+            >
             <h2 className="section-title text-[var(--brand-deep)]">
               Category Management
             </h2>
@@ -932,9 +1024,18 @@ function RestroDashboardContent() {
                 <button
                   type="submit"
                   className="food-btn"
-                  disabled={isCategoryImageUploading}
+                  disabled={isCategoryImageUploading || isSavingCategory}
                 >
-                  {editingCategoryId ? "Update Category" : "Create Category"}
+                  {isSavingCategory ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ThreeDotSpinner />
+                      Saving
+                    </span>
+                  ) : editingCategoryId ? (
+                    "Update Category"
+                  ) : (
+                    "Create Category"
+                  )}
                 </button>
                 {editingCategoryId ? (
                   <button
@@ -997,13 +1098,21 @@ function RestroDashboardContent() {
                         <button
                           type="button"
                           className="food-btn-outline"
+                          disabled={deletingCategoryId === category.id}
                           onClick={() => {
                             removeCategory(category.id).catch(() => {
                               updateStatus("Unable to delete category.");
                             });
                           }}
                         >
-                          Delete
+                          {deletingCategoryId === category.id ? (
+                            <span className="inline-flex items-center gap-2">
+                              <ThreeDotSpinner />
+                              Deleting
+                            </span>
+                          ) : (
+                            "Delete"
+                          )}
                         </button>
                       </div>
                     </div>
@@ -1013,7 +1122,7 @@ function RestroDashboardContent() {
             </div>
           </article>
 
-          <article className="elevated-card p-5">
+          <article id="items-section" ref={itemSectionRef} className="elevated-card scroll-mt-24 p-5">
             <h2 className="section-title text-[var(--brand-deep)]">Item Management</h2>
 
             <form className="mt-4 space-y-3" onSubmit={submitItem}>
@@ -1447,9 +1556,18 @@ function RestroDashboardContent() {
                 <button
                   type="submit"
                   className="food-btn"
-                  disabled={isItemImageUploading}
+                  disabled={isItemImageUploading || isSavingItem}
                 >
-                  {editingItemId ? "Update Item" : "Create Item"}
+                  {isSavingItem ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ThreeDotSpinner />
+                      Saving
+                    </span>
+                  ) : editingItemId ? (
+                    "Update Item"
+                  ) : (
+                    "Create Item"
+                  )}
                 </button>
                 {editingItemId ? (
                   <button
@@ -1515,13 +1633,21 @@ function RestroDashboardContent() {
                         <button
                           type="button"
                           className="food-btn-outline"
+                          disabled={deletingItemId === item.id}
                           onClick={() => {
                             removeItem(item.id).catch(() => {
                               updateStatus("Unable to delete item.");
                             });
                           }}
                         >
-                          Delete
+                          {deletingItemId === item.id ? (
+                            <span className="inline-flex items-center gap-2">
+                              <ThreeDotSpinner />
+                              Deleting
+                            </span>
+                          ) : (
+                            "Delete"
+                          )}
                         </button>
                       </div>
                     </div>
@@ -1530,6 +1656,7 @@ function RestroDashboardContent() {
               )}
             </div>
           </article>
+          </div>
         </section>
       </main>
     </div>
@@ -1543,7 +1670,10 @@ export default function RestroDashboardPage() {
         <div className="soft-grid-bg flex flex-1 items-center justify-center px-6">
           <div className="glass-panel w-full max-w-xl p-6 text-center">
             <p className="brand-badge">Restro Dashboard</p>
-            <p className="mt-3 text-sm text-[#6b4131]">Loading dashboard...</p>
+            <p className="mt-3 inline-flex items-center gap-2 text-sm text-[#6b4131]">
+              <ThreeDotSpinner />
+              Loading dashboard...
+            </p>
           </div>
         </div>
       }

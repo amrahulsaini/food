@@ -534,6 +534,42 @@ export function parseItemPayload(body: unknown): ItemPayload {
   };
 }
 
+async function insertVariants(
+  connection: PoolConnection,
+  itemId: number,
+  variants: ItemVariantPayload[]
+): Promise<void> {
+  if (variants.length === 0) {
+    return;
+  }
+
+  const chunkSize = 100;
+
+  for (let offset = 0; offset < variants.length; offset += chunkSize) {
+    const chunk = variants.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
+    const params: Array<number | string> = [];
+
+    for (const variant of chunk) {
+      params.push(
+        itemId,
+        variant.name,
+        variant.priceDelta,
+        variant.stockQty,
+        variant.isDefault ? 1 : 0,
+        variant.sortOrder
+      );
+    }
+
+    await connection.execute<ResultSetHeader>(
+      `INSERT INTO item_variants
+      (item_id, name, price_delta, stock_qty, is_default, sort_order)
+      VALUES ${placeholders}`,
+      params
+    );
+  }
+}
+
 async function replaceVariants(
   connection: PoolConnection,
   itemId: number,
@@ -544,19 +580,42 @@ async function replaceVariants(
     [itemId]
   );
 
-  for (const variant of variants) {
-    await connection.execute<ResultSetHeader>(
-      `INSERT INTO item_variants
-      (item_id, name, price_delta, stock_qty, is_default, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?)`,
-      [
+  await insertVariants(connection, itemId, variants);
+}
+
+async function insertAddons(
+  connection: PoolConnection,
+  itemId: number,
+  addons: ItemAddonPayload[]
+): Promise<void> {
+  if (addons.length === 0) {
+    return;
+  }
+
+  const chunkSize = 100;
+
+  for (let offset = 0; offset < addons.length; offset += chunkSize) {
+    const chunk = addons.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(", ");
+    const params: Array<number | string> = [];
+
+    for (const addon of chunk) {
+      params.push(
         itemId,
-        variant.name,
-        variant.priceDelta,
-        variant.stockQty,
-        variant.isDefault ? 1 : 0,
-        variant.sortOrder,
-      ]
+        addon.name,
+        addon.price,
+        addon.maxSelect,
+        addon.isRequired ? 1 : 0,
+        addon.isAvailable ? 1 : 0,
+        addon.sortOrder
+      );
+    }
+
+    await connection.execute<ResultSetHeader>(
+      `INSERT INTO item_addons
+      (item_id, name, price, max_select, is_required, is_available, sort_order)
+      VALUES ${placeholders}`,
+      params
     );
   }
 }
@@ -570,22 +629,7 @@ async function replaceAddons(
     itemId,
   ]);
 
-  for (const addon of addons) {
-    await connection.execute<ResultSetHeader>(
-      `INSERT INTO item_addons
-      (item_id, name, price, max_select, is_required, is_available, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        itemId,
-        addon.name,
-        addon.price,
-        addon.maxSelect,
-        addon.isRequired ? 1 : 0,
-        addon.isAvailable ? 1 : 0,
-        addon.sortOrder,
-      ]
-    );
-  }
+  await insertAddons(connection, itemId, addons);
 }
 
 async function runRestroSchemaSetup(): Promise<void> {
@@ -1004,8 +1048,8 @@ export async function createItem(payload: ItemPayload): Promise<Item> {
 
     const insertedId = Number(result.insertId);
 
-    await replaceVariants(connection, insertedId, payload.variants);
-    await replaceAddons(connection, insertedId, payload.addons);
+    await insertVariants(connection, insertedId, payload.variants);
+    await insertAddons(connection, insertedId, payload.addons);
 
     return insertedId;
   });
