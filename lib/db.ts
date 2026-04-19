@@ -11,6 +11,7 @@ type SqlValue = string | number | boolean | Date | null;
 declare global {
   // Keep a single pool during local hot-reload.
   var __foodisthanPool: Pool | undefined;
+  var __foodisthanDbKeepAliveTimer: NodeJS.Timeout | undefined;
 }
 
 const dbPort = Number(process.env.DB_PORT ?? 3306);
@@ -25,6 +26,8 @@ const pool =
     port: Number.isNaN(dbPort) ? 3306 : dbPort,
     waitForConnections: true,
     connectionLimit: 10,
+    maxIdle: 10,
+    idleTimeout: 300000,
     queueLimit: 0,
     decimalNumbers: true,
     enableKeepAlive: true,
@@ -33,6 +36,21 @@ const pool =
 
 if (process.env.NODE_ENV !== "production") {
   global.__foodisthanPool = pool;
+
+  if (!global.__foodisthanDbKeepAliveTimer) {
+    void pool.query("SELECT 1").catch(() => {
+      // Keep startup resilient even if DB is temporarily unreachable.
+    });
+
+    const timer = setInterval(() => {
+      void pool.query("SELECT 1").catch(() => {
+        // Ignore transient keep-alive ping failures.
+      });
+    }, 45_000);
+
+    timer.unref?.();
+    global.__foodisthanDbKeepAliveTimer = timer;
+  }
 }
 
 export { pool };

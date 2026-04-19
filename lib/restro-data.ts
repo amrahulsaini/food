@@ -204,7 +204,7 @@ interface AddonRow extends RowDataPacket {
   sort_order: number;
 }
 
-const ITEM_LIST_CACHE_TTL_MS = 12_000;
+const ITEM_LIST_CACHE_TTL_MS = 60_000;
 
 interface ItemListCacheEntry {
   expiresAt: number;
@@ -212,6 +212,7 @@ interface ItemListCacheEntry {
 }
 
 const itemListCache = new Map<number, ItemListCacheEntry>();
+const itemListInFlight = new Map<number, Promise<Item[]>>();
 
 function readItemListCache(restaurantId: number): Item[] | null {
   const cached = itemListCache.get(restaurantId);
@@ -1186,131 +1187,163 @@ export async function getItemsByRestaurant(restaurantId: number): Promise<Item[]
     return cachedItems;
   }
 
-  const itemQueryStartedAt = Date.now();
-  const itemRows = await query<ItemRow[]>(
-    `SELECT i.id, i.restaurant_id, i.category_id, c.name AS category_name,
-            i.name, i.description, i.image_url, i.base_price, i.stock_qty,
-            i.sku, i.is_veg, i.is_available,
-            i.offer_title, i.offer_discount_percent, i.offer_start_at, i.offer_end_at,
-            i.created_at, i.updated_at
-     FROM items i
-     INNER JOIN categories c ON c.id = i.category_id
-     WHERE i.restaurant_id = ?
-     ORDER BY i.updated_at DESC, i.id DESC`,
-    [restaurantId]
-  );
-  const itemQueryMs = Date.now() - itemQueryStartedAt;
+  const inFlight = itemListInFlight.get(restaurantId);
 
-  if (itemRows.length === 0) {
-    writeItemListCache(restaurantId, []);
+  if (inFlight) {
+    const sharedItems = await inFlight;
+
+    logSlowItemListTiming({
+      restaurantId,
+      totalMs: Date.now() - startedAt,
+      itemQueryMs: 0,
+      childQueryMs: 0,
+      mapMs: 0,
+      itemCount: sharedItems.length,
+      variantCount: sharedItems.reduce((acc, item) => acc + item.variants.length, 0),
+      addonCount: sharedItems.reduce((acc, item) => acc + item.addons.length, 0),
+      cacheHit: true,
+    });
+
+    return sharedItems;
+  }
+
+  const loadPromise = (async (): Promise<Item[]> => {
+    const itemQueryStartedAt = Date.now();
+    const itemRows = await query<ItemRow[]>(
+      `SELECT i.id, i.restaurant_id, i.category_id, c.name AS category_name,
+              i.name, i.description, i.image_url, i.base_price, i.stock_qty,
+              i.sku, i.is_veg, i.is_available,
+              i.offer_title, i.offer_discount_percent, i.offer_start_at, i.offer_end_at,
+              i.created_at, i.updated_at
+       FROM items i
+       INNER JOIN categories c ON c.id = i.category_id
+       WHERE i.restaurant_id = ?
+       ORDER BY i.updated_at DESC, i.id DESC`,
+      [restaurantId]
+    );
+    const itemQueryMs = Date.now() - itemQueryStartedAt;
+
+    if (itemRows.length === 0) {
+      writeItemListCache(restaurantId, []);
+      logSlowItemListTiming({
+        restaurantId,
+        totalMs: Date.now() - startedAt,
+        itemQueryMs,
+        childQueryMs: 0,
+        mapMs: 0,
+        itemCount: 0,
+        variantCount: 0,
+        addonCount: 0,
+        cacheHit: false,
+      });
+      return [];
+    }
+
+    const itemIds = itemRows.map((row) => row.id);
+    const chunkSize = 250;
+
+    const childQueryStartedAt = Date.now();
+
+    const variantChunkPromises: Array<Promise<VariantRow[]>> = [];
+    const addonChunkPromises: Array<Promise<AddonRow[]>> = [];
+
+    for (let offset = 0; offset < itemIds.length; offset += chunkSize) {
+      const chunk = itemIds.slice(offset, offset + chunkSize);
+      const placeholders = chunk.map(() => "?").join(", ");
+
+      variantChunkPromises.push(
+        query<VariantRow[]>(
+          `SELECT id, item_id, name, price_delta, stock_qty, is_default, sort_order
+           FROM item_variants
+           WHERE item_id IN (${placeholders})`,
+          chunk
+        )
+      );
+
+      addonChunkPromises.push(
+        query<AddonRow[]>(
+          `SELECT id, item_id, name, price, max_select, is_required, is_available, sort_order
+           FROM item_addons
+           WHERE item_id IN (${placeholders})`,
+          chunk
+        )
+      );
+    }
+
+    const [variantChunks, addonChunks] = await Promise.all([
+      Promise.all(variantChunkPromises),
+      Promise.all(addonChunkPromises),
+    ]);
+
+    const variantRows = variantChunks.flat();
+    const addonRows = addonChunks.flat();
+
+    variantRows.sort(
+      (left, right) =>
+        left.item_id - right.item_id || left.sort_order - right.sort_order || left.id - right.id
+    );
+
+    addonRows.sort(
+      (left, right) =>
+        left.item_id - right.item_id || left.sort_order - right.sort_order || left.id - right.id
+    );
+
+    const childQueryMs = Date.now() - childQueryStartedAt;
+
+    const variantsByItem = new Map<number, ItemVariant[]>();
+    const addonsByItem = new Map<number, ItemAddon[]>();
+
+    for (const row of variantRows) {
+      const mapped = mapVariant(row);
+      const list = variantsByItem.get(mapped.itemId) ?? [];
+      list.push(mapped);
+      variantsByItem.set(mapped.itemId, list);
+    }
+
+    for (const row of addonRows) {
+      const mapped = mapAddon(row);
+      const list = addonsByItem.get(mapped.itemId) ?? [];
+      list.push(mapped);
+      addonsByItem.set(mapped.itemId, list);
+    }
+
+    const mapStartedAt = Date.now();
+    const items = itemRows.map((row) => {
+      const core = mapItemCore(row);
+
+      return {
+        ...core,
+        variants: variantsByItem.get(row.id) ?? [],
+        addons: addonsByItem.get(row.id) ?? [],
+      };
+    });
+
+    writeItemListCache(restaurantId, items);
+
     logSlowItemListTiming({
       restaurantId,
       totalMs: Date.now() - startedAt,
       itemQueryMs,
-      childQueryMs: 0,
-      mapMs: 0,
-      itemCount: 0,
-      variantCount: 0,
-      addonCount: 0,
+      childQueryMs,
+      mapMs: Date.now() - mapStartedAt,
+      itemCount: items.length,
+      variantCount: variantRows.length,
+      addonCount: addonRows.length,
       cacheHit: false,
     });
-    return [];
+
+    return items;
+  })();
+
+  itemListInFlight.set(restaurantId, loadPromise);
+
+  try {
+    return await loadPromise;
+  } finally {
+    if (itemListInFlight.get(restaurantId) === loadPromise) {
+      itemListInFlight.delete(restaurantId);
+    }
   }
-
-  const itemIds = itemRows.map((row) => row.id);
-  const chunkSize = 250;
-
-  const childQueryStartedAt = Date.now();
-
-  const variantChunkPromises: Array<Promise<VariantRow[]>> = [];
-  const addonChunkPromises: Array<Promise<AddonRow[]>> = [];
-
-  for (let offset = 0; offset < itemIds.length; offset += chunkSize) {
-    const chunk = itemIds.slice(offset, offset + chunkSize);
-    const placeholders = chunk.map(() => "?").join(", ");
-
-    variantChunkPromises.push(
-      query<VariantRow[]>(
-        `SELECT id, item_id, name, price_delta, stock_qty, is_default, sort_order
-         FROM item_variants
-         WHERE item_id IN (${placeholders})`,
-        chunk
-      )
-    );
-
-    addonChunkPromises.push(
-      query<AddonRow[]>(
-        `SELECT id, item_id, name, price, max_select, is_required, is_available, sort_order
-         FROM item_addons
-         WHERE item_id IN (${placeholders})`,
-        chunk
-      )
-    );
-  }
-
-  const [variantChunks, addonChunks] = await Promise.all([
-    Promise.all(variantChunkPromises),
-    Promise.all(addonChunkPromises),
-  ]);
-
-  const variantRows = variantChunks.flat();
-  const addonRows = addonChunks.flat();
-
-  variantRows.sort(
-    (left, right) =>
-      left.item_id - right.item_id || left.sort_order - right.sort_order || left.id - right.id
-  );
-
-  addonRows.sort(
-    (left, right) =>
-      left.item_id - right.item_id || left.sort_order - right.sort_order || left.id - right.id
-  );
-
-  const childQueryMs = Date.now() - childQueryStartedAt;
-
-  const variantsByItem = new Map<number, ItemVariant[]>();
-  const addonsByItem = new Map<number, ItemAddon[]>();
-
-  for (const row of variantRows) {
-    const mapped = mapVariant(row);
-    const list = variantsByItem.get(mapped.itemId) ?? [];
-    list.push(mapped);
-    variantsByItem.set(mapped.itemId, list);
-  }
-
-  for (const row of addonRows) {
-    const mapped = mapAddon(row);
-    const list = addonsByItem.get(mapped.itemId) ?? [];
-    list.push(mapped);
-    addonsByItem.set(mapped.itemId, list);
-  }
-
-  const mapStartedAt = Date.now();
-  const items = itemRows.map((row) => {
-    const core = mapItemCore(row);
-
-    return {
-      ...core,
-      variants: variantsByItem.get(row.id) ?? [],
-      addons: addonsByItem.get(row.id) ?? [],
-    };
-  });
-
-  writeItemListCache(restaurantId, items);
-
-  logSlowItemListTiming({
-    restaurantId,
-    totalMs: Date.now() - startedAt,
-    itemQueryMs,
-    childQueryMs,
-    mapMs: Date.now() - mapStartedAt,
-    itemCount: items.length,
-    variantCount: variantRows.length,
-    addonCount: addonRows.length,
-    cacheHit: false,
-  });
-
-  return items;
 }
 
 export async function createItem(payload: ItemPayload): Promise<Item> {
