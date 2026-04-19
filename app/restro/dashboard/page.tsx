@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useCallback, useRef, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 interface Category {
   id: number;
@@ -207,6 +207,7 @@ function RestroDashboardContent() {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
 
   const [categoryForm, setCategoryForm] = useState<CategoryForm>(emptyCategoryForm);
   const [categoryImageFile, setCategoryImageFile] = useState<File | null>(null);
@@ -223,6 +224,50 @@ function RestroDashboardContent() {
   const [isSavingItem, setIsSavingItem] = useState(false);
   const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
+
+  const selectedCategory =
+    categories.find((category) => category.id === selectedCategoryId) ?? null;
+
+  const visibleItems = selectedCategoryId
+    ? items.filter((item) => item.categoryId === selectedCategoryId)
+    : [];
+
+  const itemCountByCategory = items.reduce<Record<number, number>>((acc, item) => {
+    acc[item.categoryId] = (acc[item.categoryId] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  useEffect(() => {
+    if (categories.length === 0) {
+      setSelectedCategoryId(null);
+      return;
+    }
+
+    setSelectedCategoryId((current) => {
+      if (current && categories.some((category) => category.id === current)) {
+        return current;
+      }
+
+      return categories[0].id;
+    });
+  }, [categories]);
+
+  useEffect(() => {
+    if (editingItemId !== null) {
+      return;
+    }
+
+    setItemForm((prev) => {
+      if (prev.categoryId === selectedCategoryId) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        categoryId: selectedCategoryId,
+      };
+    });
+  }, [selectedCategoryId, editingItemId]);
 
   function scrollToSection(section: "categories" | "items"): void {
     setActiveSection(section);
@@ -544,6 +589,7 @@ function RestroDashboardContent() {
           categoryId: savedCategory.id,
         };
       });
+      setSelectedCategoryId((current) => current ?? savedCategory.id);
 
       setCategoryForm(emptyCategoryForm);
       setCategoryImageFile(null);
@@ -626,7 +672,9 @@ function RestroDashboardContent() {
       return;
     }
 
-    if (!itemForm.categoryId) {
+    const resolvedCategoryId = itemForm.categoryId ?? selectedCategoryId;
+
+    if (!resolvedCategoryId) {
       updateStatus("Choose a category for the item.");
       return;
     }
@@ -651,7 +699,7 @@ function RestroDashboardContent() {
       }));
 
     const selectedCategoryName = categories.find(
-      (category) => category.id === itemForm.categoryId
+      (category) => category.id === resolvedCategoryId
     )?.name;
     const existingEditingItem = editingItemId
       ? items.find((item) => item.id === editingItemId)
@@ -676,7 +724,7 @@ function RestroDashboardContent() {
         },
         body: JSON.stringify({
           restaurantId,
-          categoryId: itemForm.categoryId,
+          categoryId: resolvedCategoryId,
           categoryName: selectedCategoryName ?? null,
           skipVariantAddonSync: shouldSkipVariantAddonSync,
           name: itemForm.name,
@@ -723,7 +771,7 @@ function RestroDashboardContent() {
       setEditingItemId(null);
       setItemImageFile(null);
       setItemUploadProgress(0);
-      setItemForm(emptyItemForm(categories[0]?.id ?? null));
+      setItemForm(emptyItemForm(selectedCategoryId));
       updateStatus(editingItemId ? "Item updated." : "Item created.");
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to save item.");
@@ -769,6 +817,7 @@ function RestroDashboardContent() {
   function editItem(item: Item): void {
     itemUploadRequestRef.current += 1;
     setActiveSection("items");
+    setSelectedCategoryId(item.categoryId);
     setEditingItemId(item.id);
 
     setItemForm({
@@ -911,9 +960,53 @@ function RestroDashboardContent() {
               </button>
             </div>
 
-            <p className="mt-4 text-xs text-[#6c4633]">
-              Use these quick actions to jump across dashboard sections.
-            </p>
+            <div className="menu-sidebar-panel mt-5">
+              <p className="menu-sidebar-title">Menu Sidebar</p>
+
+              {categories.length === 0 ? (
+                <p className="mt-2 text-xs text-[#6c4633]">
+                  Create categories first, then select one to manage items.
+                </p>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  {categories.map((category) => {
+                    const isSelected = selectedCategoryId === category.id;
+
+                    return (
+                      <button
+                        type="button"
+                        key={category.id}
+                        className={`menu-category-btn ${
+                          isSelected ? "menu-category-btn-active" : ""
+                        }`}
+                        onClick={() => {
+                          setSelectedCategoryId(category.id);
+                          setActiveSection("items");
+                          scrollToSection("items");
+                        }}
+                      >
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          {category.imageUrl ? (
+                            <img
+                              src={category.imageUrl}
+                              alt={category.name}
+                              loading="lazy"
+                              className="h-8 w-8 rounded-md border border-[#ead3bd] object-cover"
+                            />
+                          ) : (
+                            <span className="h-8 w-8 rounded-md border border-dashed border-[#d8bda6] bg-[#fff2e4]" />
+                          )}
+                          <span className="truncate text-left text-sm font-semibold text-[#522819]">
+                            {category.name}
+                          </span>
+                        </span>
+                        <span className="status-pill">{itemCountByCategory[category.id] ?? 0}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </aside>
 
           <div className="grid gap-5">
@@ -1146,538 +1239,580 @@ function RestroDashboardContent() {
           </article>
 
           <article id="items-section" ref={itemSectionRef} className="elevated-card scroll-mt-24 p-5">
-            <h2 className="section-title text-[var(--brand-deep)]">Item Management</h2>
-
-            <form className="mt-4 space-y-3" onSubmit={submitItem}>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input
-                  className="food-input"
-                  placeholder="Item name"
-                  value={itemForm.name}
-                  onChange={(event) => {
-                    setItemForm((prev) => ({
-                      ...prev,
-                      name: event.target.value,
-                    }));
-                  }}
-                />
-
-                <select
-                  className="food-select"
-                  value={itemForm.categoryId ?? ""}
-                  onChange={(event) => {
-                    setItemForm((prev) => ({
-                      ...prev,
-                      categoryId: event.target.value ? Number(event.target.value) : null,
-                    }));
-                  }}
-                >
-                  <option value="">Select category</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="section-title text-[var(--brand-deep)]">Item Management</h2>
+                <p className="mt-1 text-sm text-[#6a3f2c]">
+                  Items are scoped to the category selected in the menu sidebar.
+                </p>
               </div>
+              <span className="status-pill">
+                {selectedCategory
+                  ? `${visibleItems.length} items`
+                  : `${items.length} total items`}
+              </span>
+            </div>
 
-              <textarea
-                className="food-textarea"
-                placeholder="Item description"
-                value={itemForm.description}
-                onChange={(event) => {
-                  setItemForm((prev) => ({
-                    ...prev,
-                    description: event.target.value,
-                  }));
-                }}
-              />
-
-              <div className="space-y-2">
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="food-input"
-                  onChange={(event) => {
-                    const selectedFile = event.target.files?.[0] ?? null;
-                    handleItemImageChange(selectedFile).catch(() => {
-                      updateStatus("Item image upload failed.");
-                    });
-                  }}
-                />
-
-                <div className="rounded-lg bg-[#f3eadf] p-2">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#e5d5c0]">
-                    <div
-                      className="h-full rounded-full bg-[var(--brand)] transition-all duration-200"
-                      style={{
-                        width: `${Math.min(100, Math.max(0, itemUploadProgress))}%`,
-                      }}
-                    />
+            {selectedCategory ? (
+              <>
+                <div className="menu-selected-category mt-4">
+                  <div className="flex items-center gap-3">
+                    {selectedCategory.imageUrl ? (
+                      <img
+                        src={selectedCategory.imageUrl}
+                        alt={selectedCategory.name}
+                        loading="lazy"
+                        className="h-12 w-12 rounded-lg border border-[#ead3bd] object-cover"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-lg border border-dashed border-[#d8bda6] bg-[#fff2e4]" />
+                    )}
+                    <div>
+                      <p className="menu-selected-label">Selected Category</p>
+                      <p className="menu-selected-value">{selectedCategory.name}</p>
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-[#5d3a2e]">
-                    {isItemImageUploading
-                      ? `Uploading item image... ${itemUploadProgress}%`
-                      : itemForm.imageUrl
-                        ? "Item image uploaded and ready."
-                        : "Choose image to auto-upload (optional)."}
+                  <p className="text-xs text-[#6d4533]">
+                    Add and manage only items that belong to this category.
                   </p>
                 </div>
 
-                <p className="text-xs text-[#7a4d3a]">
-                  {itemImageFile
-                    ? `Selected image: ${itemImageFile.name}`
-                    : itemForm.imageUrl
-                      ? "Existing item image will be kept unless you upload a new one."
-                      : "Upload item image (optional)."}
-                </p>
-              </div>
+                <form className="mt-4 space-y-3" onSubmit={submitItem}>
+                  <div className="grid gap-3 sm:grid-cols-[1fr_220px]">
+                    <input
+                      className="food-input"
+                      placeholder="Item name"
+                      value={itemForm.name}
+                      onChange={(event) => {
+                        setItemForm((prev) => ({
+                          ...prev,
+                          name: event.target.value,
+                        }));
+                      }}
+                    />
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <input
-                  className="food-input"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={itemForm.basePrice}
-                  onChange={(event) => {
-                    setItemForm((prev) => ({
-                      ...prev,
-                      basePrice: Number(event.target.value || 0),
-                    }));
-                  }}
-                  placeholder="Base price"
-                />
-                <input
-                  className="food-input"
-                  type="number"
-                  min={0}
-                  value={itemForm.stockQty}
-                  onChange={(event) => {
-                    setItemForm((prev) => ({
-                      ...prev,
-                      stockQty: Number(event.target.value || 0),
-                    }));
-                  }}
-                  placeholder="Stock qty"
-                />
-                <input
-                  className="food-input"
-                  placeholder="SKU"
-                  value={itemForm.sku}
-                  onChange={(event) => {
-                    setItemForm((prev) => ({
-                      ...prev,
-                      sku: event.target.value,
-                    }));
-                  }}
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input
-                  className="food-input"
-                  placeholder="Offer title"
-                  value={itemForm.offerTitle}
-                  onChange={(event) => {
-                    setItemForm((prev) => ({
-                      ...prev,
-                      offerTitle: event.target.value,
-                    }));
-                  }}
-                />
-                <input
-                  className="food-input"
-                  type="number"
-                  min={0}
-                  max={100}
-                  step="0.01"
-                  value={itemForm.offerDiscountPercent ?? ""}
-                  onChange={(event) => {
-                    setItemForm((prev) => ({
-                      ...prev,
-                      offerDiscountPercent: event.target.value
-                        ? Number(event.target.value)
-                        : null,
-                    }));
-                  }}
-                  placeholder="Offer %"
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input
-                  className="food-input"
-                  type="datetime-local"
-                  value={itemForm.offerStartAt}
-                  onChange={(event) => {
-                    setItemForm((prev) => ({
-                      ...prev,
-                      offerStartAt: event.target.value,
-                    }));
-                  }}
-                />
-                <input
-                  className="food-input"
-                  type="datetime-local"
-                  value={itemForm.offerEndAt}
-                  onChange={(event) => {
-                    setItemForm((prev) => ({
-                      ...prev,
-                      offerEndAt: event.target.value,
-                    }));
-                  }}
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="inline-flex items-center gap-2 text-sm text-[#623729]">
-                  <input
-                    type="checkbox"
-                    checked={itemForm.isVeg}
-                    onChange={(event) => {
-                      setItemForm((prev) => ({
-                        ...prev,
-                        isVeg: event.target.checked,
-                      }));
-                    }}
-                  />
-                  Veg item
-                </label>
-                <label className="inline-flex items-center gap-2 text-sm text-[#623729]">
-                  <input
-                    type="checkbox"
-                    checked={itemForm.isAvailable}
-                    onChange={(event) => {
-                      setItemForm((prev) => ({
-                        ...prev,
-                        isAvailable: event.target.checked,
-                      }));
-                    }}
-                  />
-                  Available now
-                </label>
-              </div>
-
-              <div className="rounded-xl border border-[#efccb0] bg-[#fff6eb] p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-[#60372a]">Variants</h3>
-                  <button
-                    type="button"
-                    className="food-btn-outline"
-                    onClick={() => {
-                      setItemForm((prev) => ({
-                        ...prev,
-                        variants: [...prev.variants, emptyVariant(prev.variants.length)],
-                      }));
-                    }}
-                  >
-                    Add Variant
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {itemForm.variants.map((variant, index) => (
-                    <div key={`variant-${index}`} className="grid gap-2 sm:grid-cols-6">
-                      <input
-                        className="food-input sm:col-span-2"
-                        placeholder="Name"
-                        value={variant.name}
-                        onChange={(event) => {
-                          setItemForm((prev) => {
-                            const next = [...prev.variants];
-                            next[index] = { ...next[index], name: event.target.value };
-                            return { ...prev, variants: next };
-                          });
-                        }}
-                      />
-                      <input
-                        className="food-input"
-                        type="number"
-                        step="0.01"
-                        value={variant.priceDelta}
-                        onChange={(event) => {
-                          setItemForm((prev) => {
-                            const next = [...prev.variants];
-                            next[index] = {
-                              ...next[index],
-                              priceDelta: Number(event.target.value || 0),
-                            };
-                            return { ...prev, variants: next };
-                          });
-                        }}
-                      />
-                      <input
-                        className="food-input"
-                        type="number"
-                        value={variant.stockQty}
-                        onChange={(event) => {
-                          setItemForm((prev) => {
-                            const next = [...prev.variants];
-                            next[index] = {
-                              ...next[index],
-                              stockQty: Number(event.target.value || 0),
-                            };
-                            return { ...prev, variants: next };
-                          });
-                        }}
-                      />
-                      <label className="inline-flex items-center gap-2 text-xs text-[#613729]">
-                        <input
-                          type="checkbox"
-                          checked={variant.isDefault}
-                          onChange={(event) => {
-                            setItemForm((prev) => {
-                              const next = [...prev.variants];
-                              next[index] = {
-                                ...next[index],
-                                isDefault: event.target.checked,
-                              };
-                              return { ...prev, variants: next };
-                            });
-                          }}
-                        />
-                        Default
-                      </label>
-                      <button
-                        type="button"
-                        className="food-btn-outline"
-                        onClick={() => {
-                          setItemForm((prev) => {
-                            const next = prev.variants.filter((_, i) => i !== index);
-                            return {
-                              ...prev,
-                              variants: next.length > 0 ? next : [emptyVariant(0)],
-                            };
-                          });
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-[#efccb0] bg-[#fff6eb] p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-[#60372a]">Add-ons</h3>
-                  <button
-                    type="button"
-                    className="food-btn-outline"
-                    onClick={() => {
-                      setItemForm((prev) => ({
-                        ...prev,
-                        addons: [...prev.addons, emptyAddon(prev.addons.length)],
-                      }));
-                    }}
-                  >
-                    Add Add-on
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {itemForm.addons.map((addon, index) => (
-                    <div key={`addon-${index}`} className="grid gap-2 sm:grid-cols-7">
-                      <input
-                        className="food-input sm:col-span-2"
-                        placeholder="Name"
-                        value={addon.name}
-                        onChange={(event) => {
-                          setItemForm((prev) => {
-                            const next = [...prev.addons];
-                            next[index] = { ...next[index], name: event.target.value };
-                            return { ...prev, addons: next };
-                          });
-                        }}
-                      />
-                      <input
-                        className="food-input"
-                        type="number"
-                        step="0.01"
-                        value={addon.price}
-                        onChange={(event) => {
-                          setItemForm((prev) => {
-                            const next = [...prev.addons];
-                            next[index] = {
-                              ...next[index],
-                              price: Number(event.target.value || 0),
-                            };
-                            return { ...prev, addons: next };
-                          });
-                        }}
-                      />
-                      <input
-                        className="food-input"
-                        type="number"
-                        min={1}
-                        value={addon.maxSelect}
-                        onChange={(event) => {
-                          setItemForm((prev) => {
-                            const next = [...prev.addons];
-                            next[index] = {
-                              ...next[index],
-                              maxSelect: Number(event.target.value || 1),
-                            };
-                            return { ...prev, addons: next };
-                          });
-                        }}
-                      />
-                      <label className="inline-flex items-center gap-2 text-xs text-[#613729]">
-                        <input
-                          type="checkbox"
-                          checked={addon.isRequired}
-                          onChange={(event) => {
-                            setItemForm((prev) => {
-                              const next = [...prev.addons];
-                              next[index] = {
-                                ...next[index],
-                                isRequired: event.target.checked,
-                              };
-                              return { ...prev, addons: next };
-                            });
-                          }}
-                        />
-                        Required
-                      </label>
-                      <label className="inline-flex items-center gap-2 text-xs text-[#613729]">
-                        <input
-                          type="checkbox"
-                          checked={addon.isAvailable}
-                          onChange={(event) => {
-                            setItemForm((prev) => {
-                              const next = [...prev.addons];
-                              next[index] = {
-                                ...next[index],
-                                isAvailable: event.target.checked,
-                              };
-                              return { ...prev, addons: next };
-                            });
-                          }}
-                        />
-                        Active
-                      </label>
-                      <button
-                        type="button"
-                        className="food-btn-outline"
-                        onClick={() => {
-                          setItemForm((prev) => {
-                            const next = prev.addons.filter((_, i) => i !== index);
-                            return {
-                              ...prev,
-                              addons: next.length > 0 ? next : [emptyAddon(0)],
-                            };
-                          });
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="submit"
-                  className="food-btn"
-                  disabled={isItemImageUploading || isSavingItem}
-                >
-                  {isSavingItem ? (
-                    <span className="inline-flex items-center gap-2">
-                      <ThreeDotSpinner />
-                      Saving
-                    </span>
-                  ) : editingItemId ? (
-                    "Update Item"
-                  ) : (
-                    "Create Item"
-                  )}
-                </button>
-                {editingItemId ? (
-                  <button
-                    type="button"
-                    className="food-btn-outline"
-                    onClick={() => {
-                      itemUploadRequestRef.current += 1;
-                      setEditingItemId(null);
-                      setItemForm(emptyItemForm(categories[0]?.id ?? null));
-                      setItemImageFile(null);
-                      setItemUploadProgress(0);
-                      setIsItemImageUploading(false);
-                    }}
-                  >
-                    Cancel Edit
-                  </button>
-                ) : null}
-              </div>
-            </form>
-
-            <div className="mt-6 space-y-3">
-              {items.length === 0 ? (
-                <p className="text-sm text-[#70432e]">No items yet.</p>
-              ) : (
-                items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-xl border border-[#f2d4bb] bg-[#fff8ef] p-3"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        {item.imageUrl ? (
-                          <img
-                            src={item.imageUrl}
-                            alt={item.name}
-                            loading="lazy"
-                            className="h-14 w-14 shrink-0 rounded-lg border border-[#edd7c4] object-cover"
-                          />
-                        ) : (
-                          <div className="h-14 w-14 shrink-0 rounded-lg border border-dashed border-[#ddc2ab] bg-[#fff0df]" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold text-[#5b2e1e]">{item.name}</p>
-                          <p className="text-xs text-[#7d4f3a]">
-                            Category: {item.categoryName} | Price: {item.basePrice} | Stock: {" "}
-                            {item.stockQty}
-                          </p>
-                          <p className="text-xs text-[#7d4f3a]">
-                            Variants: {item.variants.length} | Add-ons: {item.addons.length}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="food-btn-outline"
-                          onClick={() => {
-                            editItem(item);
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="food-btn-outline"
-                          disabled={deletingItemId === item.id}
-                          onClick={() => {
-                            removeItem(item.id).catch(() => {
-                              updateStatus("Unable to delete item.");
-                            });
-                          }}
-                        >
-                          {deletingItemId === item.id ? (
-                            <span className="inline-flex items-center gap-2">
-                              <ThreeDotSpinner />
-                              Deleting
-                            </span>
-                          ) : (
-                            "Delete"
-                          )}
-                        </button>
-                      </div>
+                    <div className="menu-category-locked">
+                      <p className="menu-selected-label">Linked To</p>
+                      <p className="menu-selected-value">{selectedCategory.name}</p>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+
+                  <textarea
+                    className="food-textarea"
+                    placeholder="Item description"
+                    value={itemForm.description}
+                    onChange={(event) => {
+                      setItemForm((prev) => ({
+                        ...prev,
+                        description: event.target.value,
+                      }));
+                    }}
+                  />
+
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="food-input"
+                      onChange={(event) => {
+                        const selectedFile = event.target.files?.[0] ?? null;
+                        handleItemImageChange(selectedFile).catch(() => {
+                          updateStatus("Item image upload failed.");
+                        });
+                      }}
+                    />
+
+                    <div className="rounded-lg bg-[#f3eadf] p-2">
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-[#e5d5c0]">
+                        <div
+                          className="h-full rounded-full bg-[var(--brand)] transition-all duration-200"
+                          style={{
+                            width: `${Math.min(100, Math.max(0, itemUploadProgress))}%`,
+                          }}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-[#5d3a2e]">
+                        {isItemImageUploading
+                          ? `Uploading item image... ${itemUploadProgress}%`
+                          : itemForm.imageUrl
+                            ? "Item image uploaded and ready."
+                            : "Choose image to auto-upload (optional)."}
+                      </p>
+                    </div>
+
+                    <p className="text-xs text-[#7a4d3a]">
+                      {itemImageFile
+                        ? `Selected image: ${itemImageFile.name}`
+                        : itemForm.imageUrl
+                          ? "Existing item image will be kept unless you upload a new one."
+                          : "Upload item image (optional)."}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <input
+                      className="food-input"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={itemForm.basePrice}
+                      onChange={(event) => {
+                        setItemForm((prev) => ({
+                          ...prev,
+                          basePrice: Number(event.target.value || 0),
+                        }));
+                      }}
+                      placeholder="Base price"
+                    />
+                    <input
+                      className="food-input"
+                      type="number"
+                      min={0}
+                      value={itemForm.stockQty}
+                      onChange={(event) => {
+                        setItemForm((prev) => ({
+                          ...prev,
+                          stockQty: Number(event.target.value || 0),
+                        }));
+                      }}
+                      placeholder="Stock qty"
+                    />
+                    <input
+                      className="food-input"
+                      placeholder="SKU"
+                      value={itemForm.sku}
+                      onChange={(event) => {
+                        setItemForm((prev) => ({
+                          ...prev,
+                          sku: event.target.value,
+                        }));
+                      }}
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      className="food-input"
+                      placeholder="Offer title"
+                      value={itemForm.offerTitle}
+                      onChange={(event) => {
+                        setItemForm((prev) => ({
+                          ...prev,
+                          offerTitle: event.target.value,
+                        }));
+                      }}
+                    />
+                    <input
+                      className="food-input"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      value={itemForm.offerDiscountPercent ?? ""}
+                      onChange={(event) => {
+                        setItemForm((prev) => ({
+                          ...prev,
+                          offerDiscountPercent: event.target.value
+                            ? Number(event.target.value)
+                            : null,
+                        }));
+                      }}
+                      placeholder="Offer %"
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      className="food-input"
+                      type="datetime-local"
+                      value={itemForm.offerStartAt}
+                      onChange={(event) => {
+                        setItemForm((prev) => ({
+                          ...prev,
+                          offerStartAt: event.target.value,
+                        }));
+                      }}
+                    />
+                    <input
+                      className="food-input"
+                      type="datetime-local"
+                      value={itemForm.offerEndAt}
+                      onChange={(event) => {
+                        setItemForm((prev) => ({
+                          ...prev,
+                          offerEndAt: event.target.value,
+                        }));
+                      }}
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="inline-flex items-center gap-2 text-sm text-[#623729]">
+                      <input
+                        type="checkbox"
+                        checked={itemForm.isVeg}
+                        onChange={(event) => {
+                          setItemForm((prev) => ({
+                            ...prev,
+                            isVeg: event.target.checked,
+                          }));
+                        }}
+                      />
+                      Veg item
+                    </label>
+                    <label className="inline-flex items-center gap-2 text-sm text-[#623729]">
+                      <input
+                        type="checkbox"
+                        checked={itemForm.isAvailable}
+                        onChange={(event) => {
+                          setItemForm((prev) => ({
+                            ...prev,
+                            isAvailable: event.target.checked,
+                          }));
+                        }}
+                      />
+                      Available now
+                    </label>
+                  </div>
+
+                  <div className="rounded-xl border border-[#efccb0] bg-[#fff6eb] p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-[#60372a]">Variants</h3>
+                      <button
+                        type="button"
+                        className="food-btn-outline"
+                        onClick={() => {
+                          setItemForm((prev) => ({
+                            ...prev,
+                            variants: [...prev.variants, emptyVariant(prev.variants.length)],
+                          }));
+                        }}
+                      >
+                        Add Variant
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {itemForm.variants.map((variant, index) => (
+                        <div key={`variant-${index}`} className="grid gap-2 sm:grid-cols-6">
+                          <input
+                            className="food-input sm:col-span-2"
+                            placeholder="Name"
+                            value={variant.name}
+                            onChange={(event) => {
+                              setItemForm((prev) => {
+                                const next = [...prev.variants];
+                                next[index] = { ...next[index], name: event.target.value };
+                                return { ...prev, variants: next };
+                              });
+                            }}
+                          />
+                          <input
+                            className="food-input"
+                            type="number"
+                            step="0.01"
+                            value={variant.priceDelta}
+                            onChange={(event) => {
+                              setItemForm((prev) => {
+                                const next = [...prev.variants];
+                                next[index] = {
+                                  ...next[index],
+                                  priceDelta: Number(event.target.value || 0),
+                                };
+                                return { ...prev, variants: next };
+                              });
+                            }}
+                          />
+                          <input
+                            className="food-input"
+                            type="number"
+                            value={variant.stockQty}
+                            onChange={(event) => {
+                              setItemForm((prev) => {
+                                const next = [...prev.variants];
+                                next[index] = {
+                                  ...next[index],
+                                  stockQty: Number(event.target.value || 0),
+                                };
+                                return { ...prev, variants: next };
+                              });
+                            }}
+                          />
+                          <label className="inline-flex items-center gap-2 text-xs text-[#613729]">
+                            <input
+                              type="checkbox"
+                              checked={variant.isDefault}
+                              onChange={(event) => {
+                                setItemForm((prev) => {
+                                  const next = [...prev.variants];
+                                  next[index] = {
+                                    ...next[index],
+                                    isDefault: event.target.checked,
+                                  };
+                                  return { ...prev, variants: next };
+                                });
+                              }}
+                            />
+                            Default
+                          </label>
+                          <button
+                            type="button"
+                            className="food-btn-outline"
+                            onClick={() => {
+                              setItemForm((prev) => {
+                                const next = prev.variants.filter((_, i) => i !== index);
+                                return {
+                                  ...prev,
+                                  variants: next.length > 0 ? next : [emptyVariant(0)],
+                                };
+                              });
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#efccb0] bg-[#fff6eb] p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-[#60372a]">Add-ons</h3>
+                      <button
+                        type="button"
+                        className="food-btn-outline"
+                        onClick={() => {
+                          setItemForm((prev) => ({
+                            ...prev,
+                            addons: [...prev.addons, emptyAddon(prev.addons.length)],
+                          }));
+                        }}
+                      >
+                        Add Add-on
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {itemForm.addons.map((addon, index) => (
+                        <div key={`addon-${index}`} className="grid gap-2 sm:grid-cols-7">
+                          <input
+                            className="food-input sm:col-span-2"
+                            placeholder="Name"
+                            value={addon.name}
+                            onChange={(event) => {
+                              setItemForm((prev) => {
+                                const next = [...prev.addons];
+                                next[index] = { ...next[index], name: event.target.value };
+                                return { ...prev, addons: next };
+                              });
+                            }}
+                          />
+                          <input
+                            className="food-input"
+                            type="number"
+                            step="0.01"
+                            value={addon.price}
+                            onChange={(event) => {
+                              setItemForm((prev) => {
+                                const next = [...prev.addons];
+                                next[index] = {
+                                  ...next[index],
+                                  price: Number(event.target.value || 0),
+                                };
+                                return { ...prev, addons: next };
+                              });
+                            }}
+                          />
+                          <input
+                            className="food-input"
+                            type="number"
+                            min={1}
+                            value={addon.maxSelect}
+                            onChange={(event) => {
+                              setItemForm((prev) => {
+                                const next = [...prev.addons];
+                                next[index] = {
+                                  ...next[index],
+                                  maxSelect: Number(event.target.value || 1),
+                                };
+                                return { ...prev, addons: next };
+                              });
+                            }}
+                          />
+                          <label className="inline-flex items-center gap-2 text-xs text-[#613729]">
+                            <input
+                              type="checkbox"
+                              checked={addon.isRequired}
+                              onChange={(event) => {
+                                setItemForm((prev) => {
+                                  const next = [...prev.addons];
+                                  next[index] = {
+                                    ...next[index],
+                                    isRequired: event.target.checked,
+                                  };
+                                  return { ...prev, addons: next };
+                                });
+                              }}
+                            />
+                            Required
+                          </label>
+                          <label className="inline-flex items-center gap-2 text-xs text-[#613729]">
+                            <input
+                              type="checkbox"
+                              checked={addon.isAvailable}
+                              onChange={(event) => {
+                                setItemForm((prev) => {
+                                  const next = [...prev.addons];
+                                  next[index] = {
+                                    ...next[index],
+                                    isAvailable: event.target.checked,
+                                  };
+                                  return { ...prev, addons: next };
+                                });
+                              }}
+                            />
+                            Active
+                          </label>
+                          <button
+                            type="button"
+                            className="food-btn-outline"
+                            onClick={() => {
+                              setItemForm((prev) => {
+                                const next = prev.addons.filter((_, i) => i !== index);
+                                return {
+                                  ...prev,
+                                  addons: next.length > 0 ? next : [emptyAddon(0)],
+                                };
+                              });
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="submit"
+                      className="food-btn"
+                      disabled={isItemImageUploading || isSavingItem}
+                    >
+                      {isSavingItem ? (
+                        <span className="inline-flex items-center gap-2">
+                          <ThreeDotSpinner />
+                          Saving
+                        </span>
+                      ) : editingItemId ? (
+                        "Update Item"
+                      ) : (
+                        "Create Item"
+                      )}
+                    </button>
+                    {editingItemId ? (
+                      <button
+                        type="button"
+                        className="food-btn-outline"
+                        onClick={() => {
+                          itemUploadRequestRef.current += 1;
+                          setEditingItemId(null);
+                          setItemForm(emptyItemForm(selectedCategoryId));
+                          setItemImageFile(null);
+                          setItemUploadProgress(0);
+                          setIsItemImageUploading(false);
+                        }}
+                      >
+                        Cancel Edit
+                      </button>
+                    ) : null}
+                  </div>
+                </form>
+
+                <div className="mt-6 space-y-3">
+                  {visibleItems.length === 0 ? (
+                    <p className="text-sm text-[#70432e]">
+                      No items yet in {selectedCategory.name}. Create your first one.
+                    </p>
+                  ) : (
+                    visibleItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-[#f2d4bb] bg-[#fff8ef] p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-start gap-3">
+                            {item.imageUrl ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                loading="lazy"
+                                className="h-14 w-14 shrink-0 rounded-lg border border-[#edd7c4] object-cover"
+                              />
+                            ) : (
+                              <div className="h-14 w-14 shrink-0 rounded-lg border border-dashed border-[#ddc2ab] bg-[#fff0df]" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-[#5b2e1e]">{item.name}</p>
+                              <p className="text-xs text-[#7d4f3a]">
+                                Category: {item.categoryName} | Price: {item.basePrice} | Stock:{" "}
+                                {item.stockQty}
+                              </p>
+                              <p className="text-xs text-[#7d4f3a]">
+                                Variants: {item.variants.length} | Add-ons: {item.addons.length}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="food-btn-outline"
+                              onClick={() => {
+                                editItem(item);
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="food-btn-outline"
+                              disabled={deletingItemId === item.id}
+                              onClick={() => {
+                                removeItem(item.id).catch(() => {
+                                  updateStatus("Unable to delete item.");
+                                });
+                              }}
+                            >
+                              {deletingItemId === item.id ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <ThreeDotSpinner />
+                                  Deleting
+                                </span>
+                              ) : (
+                                "Delete"
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="menu-empty-state mt-4">
+                <p className="text-sm font-semibold text-[#512818]">
+                  Select a category from the menu sidebar to open the item form.
+                </p>
+                <button
+                  type="button"
+                  className="food-btn-outline mt-3"
+                  onClick={() => {
+                    scrollToSection("categories");
+                  }}
+                >
+                  Manage Categories
+                </button>
+              </div>
+            )}
           </article>
           </div>
         </section>

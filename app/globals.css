@@ -151,6 +151,85 @@ a {
   background: rgba(209, 15, 47, 0.12);
 }
 
+.menu-sidebar-panel {
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.7rem;
+}
+
+.menu-sidebar-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4f2a1b;
+}
+
+.menu-category-btn {
+  width: 100%;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff9f1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.5rem;
+  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+}
+
+.menu-category-btn:hover {
+  border-color: rgba(209, 15, 47, 0.55);
+  transform: translateY(-1px);
+  background: #fff3e8;
+}
+
+.menu-category-btn-active {
+  border-color: rgba(209, 15, 47, 0.85);
+  background: rgba(209, 15, 47, 0.12);
+}
+
+.menu-selected-category {
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 0.95rem;
+  background: linear-gradient(135deg, #fff8ef 0%, #fff2e2 100%);
+  padding: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.menu-selected-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5e3222;
+}
+
+.menu-selected-value {
+  margin-top: 0.12rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2f160e;
+}
+
+.menu-category-locked {
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 0.8rem;
+  background: rgba(255, 247, 235, 0.95);
+  padding: 0.5rem 0.65rem;
+}
+
+.menu-empty-state {
+  border: 1px dashed rgba(0, 0, 0, 0.22);
+  border-radius: 0.95rem;
+  background: rgba(255, 246, 236, 0.9);
+  padding: 1rem;
+}
+
 .food-input,
 .food-select,
 .food-textarea {
