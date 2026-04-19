@@ -193,8 +193,6 @@ function RestroDashboardContent() {
   const toastTimerRef = useRef<number | null>(null);
   const categoryUploadRequestRef = useRef(0);
   const itemUploadRequestRef = useRef(0);
-  const categorySectionRef = useRef<HTMLElement | null>(null);
-  const itemSectionRef = useRef<HTMLElement | null>(null);
 
   const [restaurantSlugInput, setRestaurantSlugInput] = useState(initialRestaurantSlug);
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
@@ -271,9 +269,6 @@ function RestroDashboardContent() {
 
   function scrollToSection(section: "categories" | "items"): void {
     setActiveSection(section);
-
-    const target = section === "categories" ? categorySectionRef.current : itemSectionRef.current;
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function updateStatus(message: string): void {
@@ -928,8 +923,8 @@ function RestroDashboardContent() {
           </div>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[230px_1fr]">
-          <aside className="elevated-card h-fit p-4 xl:sticky xl:top-6">
+        <section className="dashboard-shell grid gap-5 xl:grid-cols-[280px_1fr]">
+          <aside className="dashboard-side-menu elevated-card p-4">
             <p className="brand-badge">Navigation</p>
 
             <div className="mt-4 space-y-2">
@@ -981,7 +976,6 @@ function RestroDashboardContent() {
                         }`}
                         onClick={() => {
                           setSelectedCategoryId(category.id);
-                          setActiveSection("items");
                           scrollToSection("items");
                         }}
                       >
@@ -1011,9 +1005,9 @@ function RestroDashboardContent() {
 
           <div className="grid gap-5">
             <article
-              id="categories-section"
-              ref={categorySectionRef}
-              className="elevated-card scroll-mt-24 p-5"
+              className={`elevated-card p-5 ${
+                activeSection === "categories" ? "block" : "hidden"
+              }`}
             >
             <h2 className="section-title text-[var(--brand-deep)]">
               Category Management
@@ -1238,7 +1232,11 @@ function RestroDashboardContent() {
             </div>
           </article>
 
-          <article id="items-section" ref={itemSectionRef} className="elevated-card scroll-mt-24 p-5">
+          <article
+            className={`elevated-card p-5 ${
+              activeSection === "items" ? "block" : "hidden"
+            }`}
+          >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="section-title text-[var(--brand-deep)]">Item Management</h2>

@@ -83,6 +83,26 @@ a {
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.07);
 }
 
+.dashboard-shell {
+  align-items: start;
+}
+
+.dashboard-side-menu {
+  position: sticky;
+  top: 1.2rem;
+  align-self: start;
+  max-height: calc(100vh - 2.4rem);
+  overflow-y: auto;
+}
+
+@media (max-width: 1279px) {
+  .dashboard-side-menu {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 .section-title {
   font-size: clamp(1.2rem, 2vw, 1.6rem);
   font-weight: 700;
@@ -149,6 +169,7 @@ a {
 .dashboard-nav-btn-active {
   border-color: rgba(209, 15, 47, 0.8);
   background: rgba(209, 15, 47, 0.12);
+  box-shadow: inset 3px 0 0 rgba(209, 15, 47, 0.85);
 }
 
 .menu-sidebar-panel {
