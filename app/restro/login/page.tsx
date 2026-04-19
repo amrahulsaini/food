@@ -64,6 +64,7 @@ export default function RestroLoginPage() {
   const router = useRouter();
   const toastTimerRef = useRef<number | null>(null);
   const imageUploadRequestRef = useRef(0);
+  const loginWarmupPromiseRef = useRef<Promise<void> | null>(null);
 
   const [activePanel, setActivePanel] = useState<AuthPanel>("login");
   const [status, setStatus] = useState(
@@ -103,10 +104,25 @@ export default function RestroLoginPage() {
   const [isImageUploading, setIsImageUploading] = useState(false);
 
   useEffect(() => {
-    void fetch("/api/restro/bootstrap?warm=1", {
-      cache: "no-store",
-    }).catch(() => {
-      // Warm-up is best-effort.
+    const warmupPromise = Promise.all([
+      fetch("/api/restro/auth/login?warm=1", {
+        cache: "no-store",
+      }),
+      fetch("/api/restro/bootstrap?warm=1", {
+        cache: "no-store",
+      }),
+    ])
+      .then(() => undefined)
+      .catch(() => {
+        // Warm-up is best-effort.
+      });
+
+    loginWarmupPromiseRef.current = warmupPromise;
+
+    void warmupPromise.finally(() => {
+      if (loginWarmupPromiseRef.current === warmupPromise) {
+        loginWarmupPromiseRef.current = null;
+      }
     });
   }, []);
 
@@ -231,6 +247,13 @@ export default function RestroLoginPage() {
 
   async function submitLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+
+    const pendingWarmup = loginWarmupPromiseRef.current;
+
+    if (pendingWarmup) {
+      notify("Preparing secure login...");
+      await pendingWarmup;
+    }
 
     setIsSigningIn(true);
     notify("Signing in...");

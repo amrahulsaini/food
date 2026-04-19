@@ -609,7 +609,7 @@ export function parseItemPayload(body: unknown): ItemPayload {
     description: toTrimmedString(value.description, 1000),
     imageUrl: toTrimmedString(value.imageUrl, 500),
     basePrice: toDecimal(value.basePrice, "basePrice", {
-      min: 0,
+      min: 0.01,
       max: 100000,
     }),
     stockQty: toInteger(value.stockQty ?? 0, "stockQty", { min: 0, max: 1000000 }),

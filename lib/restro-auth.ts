@@ -353,6 +353,51 @@ async function verifyPassword(
   return { matches: false, shouldUpgrade: false };
 }
 
+function readHashVersion(storedHash: string): "s2" | "legacy" | "unknown" {
+  const parts = storedHash.split(":");
+
+  if (parts.length === 3 && parts[0] === FAST_HASH_PREFIX) {
+    return "s2";
+  }
+
+  if (parts.length === 2) {
+    return "legacy";
+  }
+
+  return "unknown";
+}
+
+function maskEmailForLogs(email: string): string {
+  const [localPart = "", domainPart = ""] = email.split("@");
+
+  if (!domainPart) {
+    return "invalid-email";
+  }
+
+  const visible = localPart.slice(0, 2);
+  return `${visible}***@${domainPart}`;
+}
+
+function logSlowLoginTiming(details: {
+  email: string;
+  queryMs: number;
+  verifyMs: number;
+  totalMs: number;
+  hashVersion: "s2" | "legacy" | "unknown";
+}): void {
+  if (details.totalMs < 900) {
+    return;
+  }
+
+  console.info("[restro-auth] slow-login", {
+    email: maskEmailForLogs(details.email),
+    queryMs: details.queryMs,
+    verifyMs: details.verifyMs,
+    totalMs: details.totalMs,
+    hashVersion: details.hashVersion,
+  });
+}
+
 async function runRestroAuthSchemaSetup(): Promise<void> {
   await ensureRestroSchema();
 
@@ -939,10 +984,12 @@ export async function loginRestaurantAccount(
   payload: RestaurantLoginPayload
 ): Promise<RestaurantAuthProfile> {
   await ensureRestroAuthSchema();
+  const startedAt = Date.now();
 
   const normalizedEmail = normalizeEmail(payload.ownerEmail);
   const normalizedPassword = normalizePassword(payload.ownerPassword);
 
+  const queryStartedAt = Date.now();
   const accounts = await query<RestaurantLoginRow[]>(
     `SELECT
       a.id AS account_id,
@@ -969,16 +1016,33 @@ export async function loginRestaurantAccount(
      LIMIT 1`,
     [normalizedEmail]
   );
+  const queryMs = Date.now() - queryStartedAt;
 
   const account = accounts[0];
 
   if (!account) {
+    logSlowLoginTiming({
+      email: normalizedEmail,
+      queryMs,
+      verifyMs: 0,
+      totalMs: Date.now() - startedAt,
+      hashVersion: "unknown",
+    });
     throw new InputError("Invalid email or password.", 401);
   }
 
+  const verifyStartedAt = Date.now();
   const passwordResult = await verifyPassword(normalizedPassword, account.password_hash);
+  const verifyMs = Date.now() - verifyStartedAt;
 
   if (!passwordResult.matches) {
+    logSlowLoginTiming({
+      email: normalizedEmail,
+      queryMs,
+      verifyMs,
+      totalMs: Date.now() - startedAt,
+      hashVersion: readHashVersion(account.password_hash),
+    });
     throw new InputError("Invalid email or password.", 401);
   }
 
@@ -1001,6 +1065,14 @@ export async function loginRestaurantAccount(
   const accountStatus = normalizeStatus(account.account_status);
 
   if (accountStatus !== APPROVED_STATUS) {
+    logSlowLoginTiming({
+      email: normalizedEmail,
+      queryMs,
+      verifyMs,
+      totalMs: Date.now() - startedAt,
+      hashVersion: readHashVersion(account.password_hash),
+    });
+
     if (accountStatus === "on_hold") {
       throw new InputError(
         "Registration is under review. Ask admin to set status to approved.",
@@ -1024,6 +1096,14 @@ export async function loginRestaurantAccount(
 
     throw new InputError("Your account is not approved for login.", 403);
   }
+
+  logSlowLoginTiming({
+    email: normalizedEmail,
+    queryMs,
+    verifyMs,
+    totalMs: Date.now() - startedAt,
+    hashVersion: readHashVersion(account.password_hash),
+  });
 
   return mapRestaurantProfile(account);
 }

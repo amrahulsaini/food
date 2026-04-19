@@ -27,6 +27,8 @@ const pool =
     connectionLimit: 10,
     queueLimit: 0,
     decimalNumbers: true,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
   });
 
 if (process.env.NODE_ENV !== "production") {

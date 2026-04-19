@@ -771,6 +771,11 @@ function RestroDashboardContent() {
       return;
     }
 
+    if (!Number.isFinite(itemForm.basePrice) || itemForm.basePrice <= 0) {
+      updateStatus("Price is mandatory. Enter a value greater than 0.");
+      return;
+    }
+
     const cleanedVariants = itemForm.variants
       .filter((variant) => variant.name.trim())
       .map((variant, index) => ({
@@ -1435,8 +1440,9 @@ function RestroDashboardContent() {
                     <input
                       className="food-input"
                       type="number"
-                      min={0}
+                      min={0.01}
                       step="0.01"
+                      required
                       value={itemForm.basePrice}
                       onChange={(event) => {
                         setItemForm((prev) => ({
@@ -1444,7 +1450,7 @@ function RestroDashboardContent() {
                           basePrice: Number(event.target.value || 0),
                         }));
                       }}
-                      placeholder="Base price"
+                      placeholder="Price :"
                     />
                     <input
                       className="food-input"
@@ -1457,7 +1463,7 @@ function RestroDashboardContent() {
                           stockQty: Number(event.target.value || 0),
                         }));
                       }}
-                      placeholder="Stock qty"
+                      placeholder="Stock :"
                     />
                     <input
                       className="food-input"
@@ -1592,6 +1598,7 @@ function RestroDashboardContent() {
                             className="food-input"
                             type="number"
                             step="0.01"
+                            placeholder="Price :"
                             value={variant.priceDelta}
                             onChange={(event) => {
                               setItemForm((prev) => {
@@ -1607,6 +1614,7 @@ function RestroDashboardContent() {
                           <input
                             className="food-input"
                             type="number"
+                            placeholder="Stock :"
                             value={variant.stockQty}
                             onChange={(event) => {
                               setItemForm((prev) => {
@@ -1691,6 +1699,7 @@ function RestroDashboardContent() {
                             className="food-input"
                             type="number"
                             step="0.01"
+                            placeholder="Price :"
                             value={addon.price}
                             onChange={(event) => {
                               setItemForm((prev) => {
