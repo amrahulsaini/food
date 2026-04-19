@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 interface Category {
@@ -188,7 +188,15 @@ function ThreeDotSpinner({ className = "" }: { className?: string }) {
 function SidebarIcon({
   name,
 }: {
-  name: "home" | "categories" | "items" | "preview" | "sync" | "login" | "profile";
+  name:
+    | "home"
+    | "categories"
+    | "items"
+    | "preview"
+    | "sync"
+    | "login"
+    | "profile"
+    | "logout";
 }) {
   if (name === "home") {
     return (
@@ -249,6 +257,16 @@ function SidebarIcon({
     );
   }
 
+  if (name === "logout") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <path d="M16 17l5-5-5-5" />
+        <path d="M21 12H9" />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M4 5h16v14H4z" />
@@ -258,6 +276,7 @@ function SidebarIcon({
 }
 
 function RestroDashboardContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialRestaurantSlug =
     searchParams.get("slug")?.trim().toLowerCase() ?? "";
@@ -997,8 +1016,8 @@ function RestroDashboardContent() {
         </div>
       ) : null}
 
-      <main className="flex w-full flex-1 flex-col gap-6 pb-10">
-        <section className="dashboard-shell grid min-h-screen gap-3 xl:gap-1 xl:grid-cols-[280px_1fr]">
+      <main className="flex w-full flex-1 flex-col xl:h-screen xl:overflow-hidden">
+        <section className="dashboard-shell grid min-h-screen gap-3 xl:h-full xl:min-h-0 xl:gap-1 xl:grid-cols-[280px_1fr]">
           <aside className="dashboard-side-menu elevated-card p-4">
             <div className="sidebar-owner">
               <p className="sidebar-owner-name">{ownerName}</p>
@@ -1136,12 +1155,23 @@ function RestroDashboardContent() {
                 </span>
               </button>
 
-              <Link href="/restro/login" className="dashboard-nav-btn">
+              <button
+                type="button"
+                className="dashboard-nav-btn"
+                onClick={() => {
+                  setCategories([]);
+                  setItems([]);
+                  setSelectedCategoryId(null);
+                  setRestaurantId(null);
+                  updateStatus("Logged out.");
+                  router.replace("/restro/login");
+                }}
+              >
                 <span className="sidebar-menu-left">
-                  <SidebarIcon name="login" />
-                  Back to Login
+                  <SidebarIcon name="logout" />
+                  Logout
                 </span>
-              </Link>
+              </button>
             </div>
 
             <div className="sidebar-status mt-3">
@@ -1150,7 +1180,7 @@ function RestroDashboardContent() {
             </div>
           </aside>
 
-          <div className="grid gap-4">
+          <div className="dashboard-main-content grid gap-4">
             <article
               className={`elevated-card p-5 ${
                 activeSection === "categories" ? "block" : "hidden"
