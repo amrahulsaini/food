@@ -36,6 +36,7 @@ interface Item {
 interface MenuCategory {
   id: number;
   name: string;
+  imageUrl: string | null;
   items: Item[];
 }
 
@@ -140,14 +141,40 @@ export default function CustomerPreviewPage() {
           {menu?.restaurant ? (
             menu.categories.map((category) => (
               <article key={category.id} className="elevated-card p-4">
-                <h2 className="text-lg font-bold text-[var(--brand-deep)]">{category.name}</h2>
-                <p className="mt-1 text-xs text-[#754934]">{category.items.length} items</p>
+                <div className="flex items-center gap-3">
+                  {category.imageUrl ? (
+                    <img
+                      src={category.imageUrl}
+                      alt={category.name}
+                      loading="lazy"
+                      className="h-12 w-12 rounded-lg border border-[#ead3bd] object-cover"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 rounded-lg border border-dashed border-[#d6bca3] bg-[#fff2e3]" />
+                  )}
+                  <div>
+                    <h2 className="text-lg font-bold text-[var(--brand-deep)]">{category.name}</h2>
+                    <p className="mt-1 text-xs text-[#754934]">{category.items.length} items</p>
+                  </div>
+                </div>
 
                 <div className="mt-3 space-y-3">
                   {category.items.map((item) => (
                     <div key={item.id} className="rounded-xl bg-[#fff5e9] p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold text-[#5b2e1e]">{item.name}</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-start gap-3">
+                          {item.imageUrl ? (
+                            <img
+                              src={item.imageUrl}
+                              alt={item.name}
+                              loading="lazy"
+                              className="h-14 w-14 shrink-0 rounded-lg border border-[#ead3bd] object-cover"
+                            />
+                          ) : (
+                            <div className="h-14 w-14 shrink-0 rounded-lg border border-dashed border-[#d6bca3] bg-[#fff2e3]" />
+                          )}
+                          <p className="truncate font-semibold text-[#5b2e1e]">{item.name}</p>
+                        </div>
                         <span className="text-xs text-[#6d3f2f]">Rs. {item.basePrice}</span>
                       </div>
                       <p className="mt-1 text-xs text-[#7d4f3a]">

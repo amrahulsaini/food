@@ -1091,8 +1091,46 @@ async function getItemById(
   itemId: number,
   restaurantId: number
 ): Promise<Item | null> {
-  const items = await getItemsByRestaurant(restaurantId);
-  return items.find((item) => item.id === itemId) ?? null;
+  const itemRows = await query<ItemRow[]>(
+    `SELECT i.id, i.restaurant_id, i.category_id, c.name AS category_name,
+            i.name, i.description, i.image_url, i.base_price, i.stock_qty,
+            i.sku, i.is_veg, i.is_available,
+            i.offer_title, i.offer_discount_percent, i.offer_start_at, i.offer_end_at,
+            i.created_at, i.updated_at
+     FROM items i
+     INNER JOIN categories c ON c.id = i.category_id
+     WHERE i.id = ? AND i.restaurant_id = ?
+     LIMIT 1`,
+    [itemId, restaurantId]
+  );
+
+  const itemRow = itemRows[0];
+
+  if (!itemRow) {
+    return null;
+  }
+
+  const variantRows = await query<VariantRow[]>(
+    `SELECT id, item_id, name, price_delta, stock_qty, is_default, sort_order
+     FROM item_variants
+     WHERE item_id = ?
+     ORDER BY sort_order ASC, id ASC`,
+    [itemId]
+  );
+
+  const addonRows = await query<AddonRow[]>(
+    `SELECT id, item_id, name, price, max_select, is_required, is_available, sort_order
+     FROM item_addons
+     WHERE item_id = ?
+     ORDER BY sort_order ASC, id ASC`,
+    [itemId]
+  );
+
+  return {
+    ...mapItemCore(itemRow),
+    variants: variantRows.map(mapVariant),
+    addons: addonRows.map(mapAddon),
+  };
 }
 
 export async function getCustomerMenu(restaurantId: number): Promise<{

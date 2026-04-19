@@ -486,11 +486,41 @@ function RestroDashboardContent() {
         throw new Error(await readMessage(response));
       }
 
+      const payload = (await response.json()) as { category?: Category };
+      const savedCategory = payload.category;
+
+      if (!savedCategory) {
+        throw new Error("Category save response is invalid.");
+      }
+
+      setCategories((prev) => {
+        const withoutCurrent = prev.filter((category) => category.id !== savedCategory.id);
+        const merged = [...withoutCurrent, savedCategory];
+
+        return merged.sort((left, right) => {
+          if (left.sortOrder !== right.sortOrder) {
+            return left.sortOrder - right.sortOrder;
+          }
+
+          return left.id - right.id;
+        });
+      });
+
+      setItemForm((prev) => {
+        if (prev.categoryId) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          categoryId: savedCategory.id,
+        };
+      });
+
       setCategoryForm(emptyCategoryForm);
       setCategoryImageFile(null);
       setCategoryUploadProgress(0);
       setEditingCategoryId(null);
-      await loadData(restaurantId);
       updateStatus(editingCategoryId ? "Category updated." : "Category created.");
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to save category.");
@@ -520,7 +550,17 @@ function RestroDashboardContent() {
         throw new Error(await readMessage(response));
       }
 
-      await loadData(restaurantId);
+      setCategories((prev) => prev.filter((category) => category.id !== categoryId));
+      setItemForm((prev) => {
+        if (prev.categoryId !== categoryId) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          categoryId: null,
+        };
+      });
       updateStatus("Category deleted.");
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to delete category.");
@@ -608,11 +648,22 @@ function RestroDashboardContent() {
         throw new Error(await readMessage(response));
       }
 
+      const payload = (await response.json()) as { item?: Item };
+      const savedItem = payload.item;
+
+      if (!savedItem) {
+        throw new Error("Item save response is invalid.");
+      }
+
+      setItems((prev) => {
+        const withoutCurrent = prev.filter((item) => item.id !== savedItem.id);
+        return [savedItem, ...withoutCurrent];
+      });
+
       setEditingItemId(null);
       setItemImageFile(null);
       setItemUploadProgress(0);
       setItemForm(emptyItemForm(categories[0]?.id ?? null));
-      await loadData(restaurantId);
       updateStatus(editingItemId ? "Item updated." : "Item created.");
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to save item.");
@@ -642,7 +693,7 @@ function RestroDashboardContent() {
         throw new Error(await readMessage(response));
       }
 
-      await loadData(restaurantId);
+      setItems((prev) => prev.filter((item) => item.id !== itemId));
       updateStatus("Item deleted.");
     } catch (error) {
       updateStatus(error instanceof Error ? error.message : "Unable to delete item.");
@@ -914,12 +965,24 @@ function RestroDashboardContent() {
                     className="rounded-xl border border-[#f2d4bb] bg-[#fff8ef] p-3"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-[#5b2e1e]">{category.name}</p>
-                        <p className="text-xs text-[#7d4f3a]">
-                          Parent: {category.parentCategoryId ?? "none"} | Sort: {" "}
-                          {category.sortOrder}
-                        </p>
+                      <div className="flex min-w-0 items-start gap-3">
+                        {category.imageUrl ? (
+                          <img
+                            src={category.imageUrl}
+                            alt={category.name}
+                            loading="lazy"
+                            className="h-12 w-12 shrink-0 rounded-lg border border-[#edd7c4] object-cover"
+                          />
+                        ) : (
+                          <div className="h-12 w-12 shrink-0 rounded-lg border border-dashed border-[#ddc2ab] bg-[#fff0df]" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-[#5b2e1e]">{category.name}</p>
+                          <p className="text-xs text-[#7d4f3a]">
+                            Parent: {category.parentCategoryId ?? "none"} | Sort: {" "}
+                            {category.sortOrder}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -1417,15 +1480,27 @@ function RestroDashboardContent() {
                     className="rounded-xl border border-[#f2d4bb] bg-[#fff8ef] p-3"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-[#5b2e1e]">{item.name}</p>
-                        <p className="text-xs text-[#7d4f3a]">
-                          Category: {item.categoryName} | Price: {item.basePrice} | Stock:{" "}
-                          {item.stockQty}
-                        </p>
-                        <p className="text-xs text-[#7d4f3a]">
-                          Variants: {item.variants.length} | Add-ons: {item.addons.length}
-                        </p>
+                      <div className="flex min-w-0 items-start gap-3">
+                        {item.imageUrl ? (
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            loading="lazy"
+                            className="h-14 w-14 shrink-0 rounded-lg border border-[#edd7c4] object-cover"
+                          />
+                        ) : (
+                          <div className="h-14 w-14 shrink-0 rounded-lg border border-dashed border-[#ddc2ab] bg-[#fff0df]" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-[#5b2e1e]">{item.name}</p>
+                          <p className="text-xs text-[#7d4f3a]">
+                            Category: {item.categoryName} | Price: {item.basePrice} | Stock: {" "}
+                            {item.stockQty}
+                          </p>
+                          <p className="text-xs text-[#7d4f3a]">
+                            Variants: {item.variants.length} | Add-ons: {item.addons.length}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <button
