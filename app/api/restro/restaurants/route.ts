@@ -6,9 +6,9 @@ import {
   ensureRestroAuthSchema,
   getRestaurantAccountBySlug,
   listRestaurantAccounts,
+  normalizeRestaurantSlug,
   parseRestaurantRegistrationPayload,
   registerRestaurantAccount,
-  setRestaurantImageBySlug,
 } from "@/lib/restroAuth";
 import type { NextRequest } from "next/server";
 
@@ -48,16 +48,39 @@ export async function POST(request: Request) {
     await ensureRestroAuthSchema();
     const contentType = request.headers.get("content-type") ?? "";
 
+    // Fast path: image pre-uploaded from client, submit only JSON payload.
+    if (contentType.toLowerCase().includes("application/json")) {
+      const body = (await request.json()) as Record<string, unknown>;
+      const payload = parseRestaurantRegistrationPayload(body);
+
+      const restaurantSlug = normalizeRestaurantSlug(body.restaurantSlug);
+      const restaurantImageUrl = String(body.restaurantImageUrl ?? "").trim();
+
+      if (!restaurantImageUrl.startsWith(`/cdn/${restaurantSlug}/images/`)) {
+        throw new InputError("Uploaded restaurant image is missing or invalid.");
+      }
+
+      const restaurant = await registerRestaurantAccount(payload, {
+        restaurantSlug,
+        restaurantImageUrl,
+      });
+
+      return Response.json(
+        {
+          ok: true,
+          restaurant,
+        },
+        {
+          status: 201,
+        }
+      );
+    }
+
     if (!contentType.toLowerCase().includes("multipart/form-data")) {
       throw new InputError("Restaurant image is mandatory during registration.");
     }
 
     const formData = await request.formData();
-    const restaurantImage = formData.get("restaurantImage");
-
-    if (!(restaurantImage instanceof File) || restaurantImage.size <= 0) {
-      throw new InputError("Restaurant image is mandatory during registration.");
-    }
 
     const payload = parseRestaurantRegistrationPayload({
       restaurantName: formData.get("restaurantName"),
@@ -73,18 +96,56 @@ export async function POST(request: Request) {
       cgstPercent: formData.get("cgstPercent"),
     });
 
+    const preUploadedSlugRaw = formData.get("restaurantSlug");
+    const preUploadedImageUrlRaw = formData.get("restaurantImageUrl");
+
+    if (
+      typeof preUploadedSlugRaw === "string" &&
+      typeof preUploadedImageUrlRaw === "string" &&
+      preUploadedSlugRaw.trim() &&
+      preUploadedImageUrlRaw.trim()
+    ) {
+      const restaurantSlug = normalizeRestaurantSlug(preUploadedSlugRaw);
+      const restaurantImageUrl = preUploadedImageUrlRaw.trim();
+
+      if (!restaurantImageUrl.startsWith(`/cdn/${restaurantSlug}/images/`)) {
+        throw new InputError("Uploaded restaurant image is missing or invalid.");
+      }
+
+      const restaurant = await registerRestaurantAccount(payload, {
+        restaurantSlug,
+        restaurantImageUrl,
+      });
+
+      return Response.json(
+        {
+          ok: true,
+          restaurant,
+        },
+        {
+          status: 201,
+        }
+      );
+    }
+
+    const restaurantImage = formData.get("restaurantImage");
+
+    if (!(restaurantImage instanceof File) || restaurantImage.size <= 0) {
+      throw new InputError("Restaurant image is mandatory during registration.");
+    }
+
     let restaurant = null;
     let attempts = 0;
 
     while (!restaurant && attempts < 12) {
       attempts += 1;
       const restaurantSlug = createRestaurantSlug();
-      const placeholderImage = `/cdn/${restaurantSlug}/images/pending.jpg`;
 
       try {
+        const restaurantImageUrl = await saveImageToCdn(restaurantSlug, restaurantImage);
         restaurant = await registerRestaurantAccount(payload, {
           restaurantSlug,
-          restaurantImageUrl: placeholderImage,
+          restaurantImageUrl,
         });
       } catch (error) {
         if (
@@ -103,19 +164,10 @@ export async function POST(request: Request) {
       throw new InputError("Unable to generate unique restaurant slug. Try again.", 500);
     }
 
-    const imageUrl = await saveImageToCdn(restaurant.restaurantSlug, restaurantImage);
-    await setRestaurantImageBySlug(restaurant.restaurantSlug, imageUrl);
-
-    const updatedRestaurant = await getRestaurantAccountBySlug(restaurant.restaurantSlug);
-
-    if (!updatedRestaurant) {
-      throw new InputError("Restaurant created but profile lookup failed.", 500);
-    }
-
     return Response.json(
       {
         ok: true,
-        restaurant: updatedRestaurant,
+        restaurant,
       },
       {
         status: 201,

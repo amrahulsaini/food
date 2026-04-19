@@ -50,9 +50,20 @@ function buildBusinessAddress(form: RegistrationFormState): string {
     .join(", ");
 }
 
+function createClientSlug(length = 8): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const random = new Uint32Array(length);
+  crypto.getRandomValues(random);
+
+  return Array.from(random)
+    .map((value) => alphabet[value % alphabet.length])
+    .join("");
+}
+
 export default function RestroLoginPage() {
   const router = useRouter();
   const toastTimerRef = useRef<number | null>(null);
+  const imageUploadRequestRef = useRef(0);
 
   const [activePanel, setActivePanel] = useState<AuthPanel>("login");
   const [status, setStatus] = useState(
@@ -84,7 +95,12 @@ export default function RestroLoginPage() {
     sgstPercent: "9",
     cgstPercent: "9",
   });
+  const [imageInputKey, setImageInputKey] = useState(0);
   const [restaurantImage, setRestaurantImage] = useState<File | null>(null);
+  const [preparedRestaurantSlug, setPreparedRestaurantSlug] = useState("");
+  const [uploadedRestaurantImageUrl, setUploadedRestaurantImageUrl] = useState("");
+  const [imageUploadProgress, setImageUploadProgress] = useState(0);
+  const [isImageUploading, setIsImageUploading] = useState(false);
 
   function notify(message: string): void {
     setStatus(message);
@@ -98,6 +114,111 @@ export default function RestroLoginPage() {
       setToast(null);
       toastTimerRef.current = null;
     }, 3200);
+  }
+
+  async function uploadRegistrationImage(
+    file: File,
+    slug: string,
+    onProgress?: (progress: number) => void
+  ): Promise<string> {
+    return await new Promise<string>((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("slug", slug);
+      formData.append("file", file);
+      formData.append("allowUnregistered", "1");
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/restro/upload");
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) {
+          return;
+        }
+
+        const percentage = Math.min(
+          100,
+          Math.max(1, Math.round((event.loaded / event.total) * 100))
+        );
+        onProgress?.(percentage);
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Image upload failed. Check your connection and retry."));
+      };
+
+      xhr.onload = () => {
+        let payload: { imageUrl?: string; message?: string } = {};
+
+        try {
+          payload = JSON.parse(xhr.responseText) as {
+            imageUrl?: string;
+            message?: string;
+          };
+        } catch {
+          payload = {};
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300 && payload.imageUrl) {
+          resolve(payload.imageUrl);
+          return;
+        }
+
+        reject(
+          new Error(payload.message ?? `Image upload failed with status ${xhr.status}.`)
+        );
+      };
+
+      xhr.send(formData);
+    });
+  }
+
+  async function handleRestaurantImageChange(file: File | null): Promise<void> {
+    setRestaurantImage(file);
+    setPreparedRestaurantSlug("");
+    setUploadedRestaurantImageUrl("");
+    setImageUploadProgress(0);
+
+    if (!file) {
+      return;
+    }
+
+    const uploadId = imageUploadRequestRef.current + 1;
+    imageUploadRequestRef.current = uploadId;
+
+    const slug = createClientSlug(8);
+    setPreparedRestaurantSlug(slug);
+    setIsImageUploading(true);
+    notify("Uploading restaurant image...");
+
+    try {
+      const imageUrl = await uploadRegistrationImage(file, slug, (progress) => {
+        if (uploadId === imageUploadRequestRef.current) {
+          setImageUploadProgress(progress);
+        }
+      });
+
+      if (uploadId !== imageUploadRequestRef.current) {
+        return;
+      }
+
+      setUploadedRestaurantImageUrl(imageUrl);
+      setImageUploadProgress(100);
+      notify("Restaurant image uploaded. Submit is now ready.");
+    } catch (error) {
+      if (uploadId !== imageUploadRequestRef.current) {
+        return;
+      }
+
+      setRestaurantImage(null);
+      setPreparedRestaurantSlug("");
+      setUploadedRestaurantImageUrl("");
+      setImageUploadProgress(0);
+      notify(error instanceof Error ? error.message : "Restaurant image upload failed.");
+    } finally {
+      if (uploadId === imageUploadRequestRef.current) {
+        setIsImageUploading(false);
+      }
+    }
   }
 
   async function submitLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -151,8 +272,13 @@ export default function RestroLoginPage() {
       return;
     }
 
-    if (!restaurantImage) {
-      notify("Restaurant image is mandatory for registration.");
+    if (isImageUploading) {
+      notify("Please wait, restaurant image is still uploading.");
+      return;
+    }
+
+    if (!restaurantImage || !uploadedRestaurantImageUrl || !preparedRestaurantSlug) {
+      notify("Restaurant image upload is mandatory before registration.");
       return;
     }
 
@@ -167,28 +293,28 @@ export default function RestroLoginPage() {
     notify("Creating restaurant account...");
 
     try {
-      const formData = new FormData();
-      formData.append("restaurantName", registrationForm.restaurantName);
-      formData.append("ownerName", registrationForm.ownerName);
-      formData.append("ownerMobile", registrationForm.mobileNumber);
-      formData.append("ownerEmail", registrationForm.email);
-      formData.append("ownerPassword", registrationForm.password);
-      formData.append("businessAddress", businessAddress);
-      formData.append(
-        "city",
-        [registrationForm.city.trim(), registrationForm.state.trim()]
-          .filter((value) => value.length > 0)
-          .join(", ")
-      );
-      formData.append("postalCode", registrationForm.pincode);
-      formData.append("gstin", registrationForm.gstin);
-      formData.append("sgstPercent", registrationForm.sgstPercent);
-      formData.append("cgstPercent", registrationForm.cgstPercent);
-      formData.append("restaurantImage", restaurantImage);
-
       const response = await fetch("/api/restro/restaurants", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          restaurantName: registrationForm.restaurantName,
+          ownerName: registrationForm.ownerName,
+          ownerMobile: registrationForm.mobileNumber,
+          ownerEmail: registrationForm.email,
+          ownerPassword: registrationForm.password,
+          businessAddress,
+          city: [registrationForm.city.trim(), registrationForm.state.trim()]
+            .filter((value) => value.length > 0)
+            .join(", "),
+          postalCode: registrationForm.pincode,
+          gstin: registrationForm.gstin,
+          sgstPercent: registrationForm.sgstPercent,
+          cgstPercent: registrationForm.cgstPercent,
+          restaurantSlug: preparedRestaurantSlug,
+          restaurantImageUrl: uploadedRestaurantImageUrl,
+        }),
       });
 
       if (!response.ok) {
@@ -211,7 +337,13 @@ export default function RestroLoginPage() {
         password: "",
         confirmPassword: "",
       }));
+
+      imageUploadRequestRef.current += 1;
       setRestaurantImage(null);
+      setPreparedRestaurantSlug("");
+      setUploadedRestaurantImageUrl("");
+      setImageUploadProgress(0);
+      setImageInputKey((prev) => prev + 1);
       setActivePanel("login");
       notify(
         restaurantSlug
@@ -439,14 +571,35 @@ export default function RestroLoginPage() {
                     Restaurant Image (mandatory)
                   </label>
                   <input
+                    key={imageInputKey}
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
                     className="food-input"
                     onChange={(event) => {
                       const selectedFile = event.target.files?.[0] ?? null;
-                      setRestaurantImage(selectedFile);
+                      handleRestaurantImageChange(selectedFile).catch(() => {
+                        notify("Restaurant image upload failed.");
+                      });
                     }}
                   />
+
+                  <div className="mt-2 rounded-lg bg-[#f3eadf] p-2">
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-[#e5d5c0]">
+                      <div
+                        className="h-full rounded-full bg-[var(--brand)] transition-all duration-200"
+                        style={{ width: `${Math.min(100, Math.max(0, imageUploadProgress))}%` }}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-[#5d3a2e]">
+                      {isImageUploading
+                        ? `Uploading image... ${imageUploadProgress}%`
+                        : uploadedRestaurantImageUrl
+                          ? "Image uploaded successfully."
+                          : restaurantImage
+                            ? "Image selected."
+                            : "Choose image to start auto upload."}
+                    </p>
+                  </div>
                 </div>
 
                 <div>
@@ -600,7 +753,7 @@ export default function RestroLoginPage() {
                 <button
                   type="submit"
                   className="food-btn w-full"
-                  disabled={isRegistering}
+                  disabled={isRegistering || isImageUploading}
                 >
                   {isRegistering ? "Submitting..." : "Submit For Admin Approval"}
                 </button>

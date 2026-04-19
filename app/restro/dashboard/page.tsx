@@ -181,6 +181,8 @@ function RestroDashboardContent() {
     searchParams.get("slug")?.trim().toLowerCase() ?? "";
   const ownerName = searchParams.get("owner")?.trim() || "Manager";
   const toastTimerRef = useRef<number | null>(null);
+  const categoryUploadRequestRef = useRef(0);
+  const itemUploadRequestRef = useRef(0);
 
   const [restaurantSlugInput, setRestaurantSlugInput] = useState(initialRestaurantSlug);
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
@@ -193,10 +195,14 @@ function RestroDashboardContent() {
 
   const [categoryForm, setCategoryForm] = useState<CategoryForm>(emptyCategoryForm);
   const [categoryImageFile, setCategoryImageFile] = useState<File | null>(null);
+  const [categoryUploadProgress, setCategoryUploadProgress] = useState(0);
+  const [isCategoryImageUploading, setIsCategoryImageUploading] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
 
   const [itemForm, setItemForm] = useState<ItemForm>(emptyItemForm(null));
   const [itemImageFile, setItemImageFile] = useState<File | null>(null);
+  const [itemUploadProgress, setItemUploadProgress] = useState(0);
+  const [isItemImageUploading, setIsItemImageUploading] = useState(false);
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
 
   function updateStatus(message: string): void {
@@ -307,33 +313,141 @@ function RestroDashboardContent() {
     }
   }
 
-  async function uploadImageForCurrentSlug(file: File): Promise<string> {
+  async function uploadImageForCurrentSlug(
+    file: File,
+    onProgress?: (progress: number) => void
+  ): Promise<string> {
     const normalizedSlug = restaurantSlugInput.trim().toLowerCase();
 
     if (!/^[a-z0-9]{6,8}$/.test(normalizedSlug)) {
       throw new Error("Sync with a valid restaurant slug before uploading images.");
     }
 
-    const formData = new FormData();
-    formData.append("slug", normalizedSlug);
-    formData.append("file", file);
+    return await new Promise<string>((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("slug", normalizedSlug);
+      formData.append("file", file);
 
-    const response = await fetch("/api/restro/upload", {
-      method: "POST",
-      body: formData,
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/restro/upload");
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) {
+          return;
+        }
+
+        const percentage = Math.min(
+          100,
+          Math.max(1, Math.round((event.loaded / event.total) * 100))
+        );
+        onProgress?.(percentage);
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Image upload failed. Check your connection and retry."));
+      };
+
+      xhr.onload = () => {
+        let payload: { imageUrl?: string; message?: string } = {};
+
+        try {
+          payload = JSON.parse(xhr.responseText) as { imageUrl?: string; message?: string };
+        } catch {
+          payload = {};
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300 && payload.imageUrl) {
+          resolve(payload.imageUrl);
+          return;
+        }
+
+        reject(new Error(payload.message ?? `Image upload failed with status ${xhr.status}.`));
+      };
+
+      xhr.send(formData);
     });
+  }
 
-    if (!response.ok) {
-      throw new Error(await readMessage(response));
+  async function handleCategoryImageChange(file: File | null): Promise<void> {
+    setCategoryImageFile(file);
+    setCategoryUploadProgress(0);
+
+    if (!file) {
+      return;
     }
 
-    const payload = (await response.json()) as { imageUrl?: string };
+    const uploadId = categoryUploadRequestRef.current + 1;
+    categoryUploadRequestRef.current = uploadId;
+    setIsCategoryImageUploading(true);
+    updateStatus("Uploading category image...");
 
-    if (!payload.imageUrl) {
-      throw new Error("Image upload failed.");
+    try {
+      const imageUrl = await uploadImageForCurrentSlug(file, setCategoryUploadProgress);
+
+      if (uploadId !== categoryUploadRequestRef.current) {
+        return;
+      }
+
+      setCategoryUploadProgress(100);
+      setCategoryForm((prev) => ({
+        ...prev,
+        imageUrl,
+      }));
+      updateStatus("Category image uploaded.");
+    } catch (error) {
+      if (uploadId !== categoryUploadRequestRef.current) {
+        return;
+      }
+
+      setCategoryImageFile(null);
+      setCategoryUploadProgress(0);
+      updateStatus(error instanceof Error ? error.message : "Category image upload failed.");
+    } finally {
+      if (uploadId === categoryUploadRequestRef.current) {
+        setIsCategoryImageUploading(false);
+      }
+    }
+  }
+
+  async function handleItemImageChange(file: File | null): Promise<void> {
+    setItemImageFile(file);
+    setItemUploadProgress(0);
+
+    if (!file) {
+      return;
     }
 
-    return payload.imageUrl;
+    const uploadId = itemUploadRequestRef.current + 1;
+    itemUploadRequestRef.current = uploadId;
+    setIsItemImageUploading(true);
+    updateStatus("Uploading item image...");
+
+    try {
+      const imageUrl = await uploadImageForCurrentSlug(file, setItemUploadProgress);
+
+      if (uploadId !== itemUploadRequestRef.current) {
+        return;
+      }
+
+      setItemUploadProgress(100);
+      setItemForm((prev) => ({
+        ...prev,
+        imageUrl,
+      }));
+      updateStatus("Item image uploaded.");
+    } catch (error) {
+      if (uploadId !== itemUploadRequestRef.current) {
+        return;
+      }
+
+      setItemImageFile(null);
+      setItemUploadProgress(0);
+      updateStatus(error instanceof Error ? error.message : "Item image upload failed.");
+    } finally {
+      if (uploadId === itemUploadRequestRef.current) {
+        setIsItemImageUploading(false);
+      }
+    }
   }
 
   async function submitCategory(event: FormEvent<HTMLFormElement>) {
@@ -344,11 +458,12 @@ function RestroDashboardContent() {
       return;
     }
 
-    try {
-      const uploadedImageUrl = categoryImageFile
-        ? await uploadImageForCurrentSlug(categoryImageFile)
-        : categoryForm.imageUrl;
+    if (isCategoryImageUploading) {
+      updateStatus("Wait for category image upload to finish.");
+      return;
+    }
 
+    try {
       const endpoint = editingCategoryId
         ? `/api/restro/categories/${editingCategoryId}`
         : "/api/restro/categories";
@@ -362,7 +477,7 @@ function RestroDashboardContent() {
         body: JSON.stringify({
           restaurantId,
           ...categoryForm,
-          imageUrl: uploadedImageUrl,
+          imageUrl: categoryForm.imageUrl,
           parentCategoryId: categoryForm.parentCategoryId,
         }),
       });
@@ -373,6 +488,7 @@ function RestroDashboardContent() {
 
       setCategoryForm(emptyCategoryForm);
       setCategoryImageFile(null);
+      setCategoryUploadProgress(0);
       setEditingCategoryId(null);
       await loadData(restaurantId);
       updateStatus(editingCategoryId ? "Category updated." : "Category created.");
@@ -412,6 +528,7 @@ function RestroDashboardContent() {
   }
 
   function editCategory(category: Category): void {
+    categoryUploadRequestRef.current += 1;
     setEditingCategoryId(category.id);
     setCategoryForm({
       name: category.name,
@@ -422,6 +539,8 @@ function RestroDashboardContent() {
       isActive: category.isActive,
     });
     setCategoryImageFile(null);
+    setCategoryUploadProgress(0);
+    setIsCategoryImageUploading(false);
   }
 
   async function submitItem(event: FormEvent<HTMLFormElement>) {
@@ -434,6 +553,11 @@ function RestroDashboardContent() {
 
     if (!itemForm.categoryId) {
       updateStatus("Choose a category for the item.");
+      return;
+    }
+
+    if (isItemImageUploading) {
+      updateStatus("Wait for item image upload to finish.");
       return;
     }
 
@@ -452,10 +576,6 @@ function RestroDashboardContent() {
       }));
 
     try {
-      const uploadedImageUrl = itemImageFile
-        ? await uploadImageForCurrentSlug(itemImageFile)
-        : itemForm.imageUrl;
-
       const endpoint = editingItemId ? `/api/restro/items/${editingItemId}` : "/api/restro/items";
       const method = editingItemId ? "PUT" : "POST";
 
@@ -469,7 +589,7 @@ function RestroDashboardContent() {
           categoryId: itemForm.categoryId,
           name: itemForm.name,
           description: itemForm.description,
-          imageUrl: uploadedImageUrl,
+          imageUrl: itemForm.imageUrl,
           basePrice: itemForm.basePrice,
           stockQty: itemForm.stockQty,
           sku: itemForm.sku,
@@ -490,6 +610,7 @@ function RestroDashboardContent() {
 
       setEditingItemId(null);
       setItemImageFile(null);
+      setItemUploadProgress(0);
       setItemForm(emptyItemForm(categories[0]?.id ?? null));
       await loadData(restaurantId);
       updateStatus(editingItemId ? "Item updated." : "Item created.");
@@ -529,6 +650,7 @@ function RestroDashboardContent() {
   }
 
   function editItem(item: Item): void {
+    itemUploadRequestRef.current += 1;
     setEditingItemId(item.id);
 
     setItemForm({
@@ -568,6 +690,8 @@ function RestroDashboardContent() {
           : [emptyAddon(0)],
     });
     setItemImageFile(null);
+    setItemUploadProgress(0);
+    setIsItemImageUploading(false);
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -706,9 +830,30 @@ function RestroDashboardContent() {
                   className="food-input"
                   onChange={(event) => {
                     const selectedFile = event.target.files?.[0] ?? null;
-                    setCategoryImageFile(selectedFile);
+                    handleCategoryImageChange(selectedFile).catch(() => {
+                      updateStatus("Category image upload failed.");
+                    });
                   }}
                 />
+
+                <div className="rounded-lg bg-[#f3eadf] p-2">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#e5d5c0]">
+                    <div
+                      className="h-full rounded-full bg-[var(--brand)] transition-all duration-200"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, categoryUploadProgress))}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-[#5d3a2e]">
+                    {isCategoryImageUploading
+                      ? `Uploading category image... ${categoryUploadProgress}%`
+                      : categoryForm.imageUrl
+                        ? "Category image uploaded and ready."
+                        : "Choose image to auto-upload (optional)."}
+                  </p>
+                </div>
+
                 <p className="text-xs text-[#7a4d3a]">
                   {categoryImageFile
                     ? `Selected image: ${categoryImageFile.name}`
@@ -733,7 +878,11 @@ function RestroDashboardContent() {
               </label>
 
               <div className="flex flex-wrap gap-2">
-                <button type="submit" className="food-btn">
+                <button
+                  type="submit"
+                  className="food-btn"
+                  disabled={isCategoryImageUploading}
+                >
                   {editingCategoryId ? "Update Category" : "Create Category"}
                 </button>
                 {editingCategoryId ? (
@@ -741,9 +890,12 @@ function RestroDashboardContent() {
                     type="button"
                     className="food-btn-outline"
                     onClick={() => {
+                      categoryUploadRequestRef.current += 1;
                       setEditingCategoryId(null);
                       setCategoryForm(emptyCategoryForm);
                       setCategoryImageFile(null);
+                      setCategoryUploadProgress(0);
+                      setIsCategoryImageUploading(false);
                     }}
                   >
                     Cancel Edit
@@ -853,9 +1005,30 @@ function RestroDashboardContent() {
                   className="food-input"
                   onChange={(event) => {
                     const selectedFile = event.target.files?.[0] ?? null;
-                    setItemImageFile(selectedFile);
+                    handleItemImageChange(selectedFile).catch(() => {
+                      updateStatus("Item image upload failed.");
+                    });
                   }}
                 />
+
+                <div className="rounded-lg bg-[#f3eadf] p-2">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#e5d5c0]">
+                    <div
+                      className="h-full rounded-full bg-[var(--brand)] transition-all duration-200"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, itemUploadProgress))}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-[#5d3a2e]">
+                    {isItemImageUploading
+                      ? `Uploading item image... ${itemUploadProgress}%`
+                      : itemForm.imageUrl
+                        ? "Item image uploaded and ready."
+                        : "Choose image to auto-upload (optional)."}
+                  </p>
+                </div>
+
                 <p className="text-xs text-[#7a4d3a]">
                   {itemImageFile
                     ? `Selected image: ${itemImageFile.name}`
@@ -1208,7 +1381,11 @@ function RestroDashboardContent() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <button type="submit" className="food-btn">
+                <button
+                  type="submit"
+                  className="food-btn"
+                  disabled={isItemImageUploading}
+                >
                   {editingItemId ? "Update Item" : "Create Item"}
                 </button>
                 {editingItemId ? (
@@ -1216,9 +1393,12 @@ function RestroDashboardContent() {
                     type="button"
                     className="food-btn-outline"
                     onClick={() => {
+                      itemUploadRequestRef.current += 1;
                       setEditingItemId(null);
                       setItemForm(emptyItemForm(categories[0]?.id ?? null));
                       setItemImageFile(null);
+                      setItemUploadProgress(0);
+                      setIsItemImageUploading(false);
                     }}
                   >
                     Cancel Edit

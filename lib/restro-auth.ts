@@ -5,10 +5,16 @@ import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { execute, query, withTransaction } from "@/lib/db";
 import { InputError, ensureRestroSchema } from "@/lib/restro-data";
 
+declare global {
+  // Persist schema init promise across dev hot reloads.
+  var __restroAuthSchemaReadyPromise: Promise<void> | undefined;
+}
+
 const scrypt = promisify(scryptCallback);
 const ACCOUNT_STATUSES = ["approved", "suspended", "rejected", "on_hold"] as const;
 const APPROVED_STATUS = "approved";
 const SLUG_PATTERN = /^[a-z0-9]{6,8}$/;
+const RESTRO_AUTH_MIGRATION_FLAG = "restro_auth_legacy_migration_v2";
 
 type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 
@@ -86,6 +92,10 @@ let restroAuthSchemaReadyPromise: Promise<void> | null = null;
 interface InformationSchemaColumnRow extends RowDataPacket {
   COLUMN_NAME: string;
   IS_NULLABLE: "YES" | "NO";
+}
+
+interface MetaRow extends RowDataPacket {
+  meta_value: string;
 }
 
 function normalizeName(value: unknown, fieldName: string): string {
@@ -344,6 +354,29 @@ async function runRestroAuthSchemaSetup(): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
 
+  await execute(`
+    CREATE TABLE IF NOT EXISTS app_meta (
+      meta_key VARCHAR(120) NOT NULL,
+      meta_value VARCHAR(255) NOT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (meta_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+
+  const migrationFlagRows = await query<MetaRow[]>(
+    `SELECT meta_value
+     FROM app_meta
+     WHERE meta_key = ?
+     LIMIT 1`,
+    [RESTRO_AUTH_MIGRATION_FLAG]
+  );
+
+  const migrationAlreadyApplied = migrationFlagRows.length > 0;
+
+  if (migrationAlreadyApplied) {
+    return;
+  }
+
   const readColumns = async (): Promise<InformationSchemaColumnRow[]> =>
     await query<InformationSchemaColumnRow[]>(
       `SELECT COLUMN_NAME, IS_NULLABLE
@@ -598,14 +631,34 @@ async function runRestroAuthSchemaSetup(): Promise<void> {
     WHERE account_status IS NULL
       OR account_status = ''
   `);
+
+  await execute(
+    `INSERT INTO app_meta (meta_key, meta_value)
+     VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE meta_value = VALUES(meta_value)`,
+    [RESTRO_AUTH_MIGRATION_FLAG, "1"]
+  );
 }
 
 export async function ensureRestroAuthSchema(): Promise<void> {
+  if (process.env.NODE_ENV !== "production" && global.__restroAuthSchemaReadyPromise) {
+    restroAuthSchemaReadyPromise = global.__restroAuthSchemaReadyPromise;
+  }
+
   if (!restroAuthSchemaReadyPromise) {
     restroAuthSchemaReadyPromise = runRestroAuthSchemaSetup().catch((error) => {
       restroAuthSchemaReadyPromise = null;
+
+      if (process.env.NODE_ENV !== "production") {
+        global.__restroAuthSchemaReadyPromise = undefined;
+      }
+
       throw error;
     });
+
+    if (process.env.NODE_ENV !== "production") {
+      global.__restroAuthSchemaReadyPromise = restroAuthSchemaReadyPromise;
+    }
   }
 
   await restroAuthSchemaReadyPromise;

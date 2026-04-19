@@ -5,6 +5,11 @@ import type {
 } from "mysql2/promise";
 import { execute, query, withTransaction } from "@/lib/db";
 
+declare global {
+  // Persist schema init promise across dev hot reloads.
+  var __restroSchemaReadyPromise: Promise<void> | undefined;
+}
+
 export class InputError extends Error {
   status: number;
 
@@ -720,11 +725,24 @@ async function runRestroSchemaSetup(): Promise<void> {
 }
 
 export async function ensureRestroSchema(): Promise<void> {
+  if (process.env.NODE_ENV !== "production" && global.__restroSchemaReadyPromise) {
+    restroSchemaReadyPromise = global.__restroSchemaReadyPromise;
+  }
+
   if (!restroSchemaReadyPromise) {
     restroSchemaReadyPromise = runRestroSchemaSetup().catch((error) => {
       restroSchemaReadyPromise = null;
+
+      if (process.env.NODE_ENV !== "production") {
+        global.__restroSchemaReadyPromise = undefined;
+      }
+
       throw error;
     });
+
+    if (process.env.NODE_ENV !== "production") {
+      global.__restroSchemaReadyPromise = restroSchemaReadyPromise;
+    }
   }
 
   await restroSchemaReadyPromise;
