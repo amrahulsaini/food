@@ -357,6 +357,9 @@ function RestroDashboardContent() {
   const [profileDetails, setProfileDetails] = useState<RestaurantProfileDetails | null>(null);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [routeLoadingTarget, setRouteLoadingTarget] = useState<
+    "customer" | "logout" | null
+  >(null);
   const [status, setStatus] = useState("Enter restaurant slug and click Sync Data.");
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -668,6 +671,21 @@ function RestroDashboardContent() {
     } finally {
       setIsProfileLoading(false);
     }
+  }
+
+  function startRouteNavigation(
+    target: "customer" | "logout",
+    href: string,
+    mode: "push" | "replace" = "push"
+  ): void {
+    setRouteLoadingTarget(target);
+
+    if (mode === "replace") {
+      router.replace(href);
+      return;
+    }
+
+    router.push(href);
   }
 
   async function uploadImageForCurrentSlug(
@@ -1206,10 +1224,27 @@ function RestroDashboardContent() {
                 <span className="status-pill">{items.length}</span>
               </button>
 
-              <Link href="/customer" className="dashboard-nav-btn">
+              <Link
+                href="/customer"
+                className="dashboard-nav-btn"
+                onClick={(event) => {
+                  if (routeLoadingTarget) {
+                    event.preventDefault();
+                    return;
+                  }
+
+                  setRouteLoadingTarget("customer");
+                }}
+              >
                 <span className="sidebar-menu-left">
-                  <SidebarIcon name="preview" />
-                  Customer Preview
+                  {routeLoadingTarget === "customer" ? (
+                    <ThreeDotSpinner />
+                  ) : (
+                    <SidebarIcon name="preview" />
+                  )}
+                  {routeLoadingTarget === "customer"
+                    ? "Opening Preview"
+                    : "Customer Preview"}
                 </span>
               </Link>
             </div>
@@ -1300,6 +1335,7 @@ function RestroDashboardContent() {
               <button
                 type="button"
                 className="dashboard-nav-btn"
+                disabled={routeLoadingTarget !== null}
                 onClick={() => {
                   setCategories([]);
                   setItems([]);
@@ -1309,12 +1345,16 @@ function RestroDashboardContent() {
                   setIsProfileDialogOpen(false);
                   setIsProfileLoading(false);
                   updateStatus("Logged out.");
-                  router.replace("/restro/login");
+                  startRouteNavigation("logout", "/restro/login", "replace");
                 }}
               >
                 <span className="sidebar-menu-left">
-                  <SidebarIcon name="logout" />
-                  Logout
+                  {routeLoadingTarget === "logout" ? (
+                    <ThreeDotSpinner />
+                  ) : (
+                    <SidebarIcon name="logout" />
+                  )}
+                  {routeLoadingTarget === "logout" ? "Logging Out" : "Logout"}
                 </span>
               </button>
             </div>

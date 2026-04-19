@@ -63,6 +63,16 @@ function createClientSlug(length = 8): string {
     .join("");
 }
 
+function ThreeDotSpinner({ className = "" }: { className?: string }) {
+  return (
+    <span className={`dot-spinner ${className}`} aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 export default function RestroLoginPage() {
   const router = useRouter();
   const toastTimerRef = useRef<number | null>(null);
@@ -76,6 +86,9 @@ export default function RestroLoginPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [routeLoadingTarget, setRouteLoadingTarget] = useState<
+    "home" | "customer" | "dashboard" | null
+  >(null);
 
   const [loginForm, setLoginForm] = useState<LoginFormState>({
     email: "",
@@ -288,8 +301,10 @@ export default function RestroLoginPage() {
 
       const slugQuery = encodeURIComponent(restaurant.restaurantSlug);
 
+      setRouteLoadingTarget("dashboard");
       router.push(`/restro/dashboard/${slugQuery}`);
     } catch (error) {
+      setRouteLoadingTarget(null);
       notify(error instanceof Error ? error.message : "Sign-in failed.");
     } finally {
       setIsSigningIn(false);
@@ -411,11 +426,47 @@ export default function RestroLoginPage() {
             {status}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href="/" className="food-btn-outline">
-              Back Home
+            <Link
+              href="/"
+              className="food-btn-outline"
+              onClick={(event) => {
+                if (routeLoadingTarget) {
+                  event.preventDefault();
+                  return;
+                }
+
+                setRouteLoadingTarget("home");
+              }}
+            >
+              {routeLoadingTarget === "home" ? (
+                <span className="inline-flex items-center gap-2">
+                  <ThreeDotSpinner />
+                  Opening Home
+                </span>
+              ) : (
+                "Back Home"
+              )}
             </Link>
-            <Link href="/customer" className="food-btn-outline">
-              Customer View
+            <Link
+              href="/customer"
+              className="food-btn-outline"
+              onClick={(event) => {
+                if (routeLoadingTarget) {
+                  event.preventDefault();
+                  return;
+                }
+
+                setRouteLoadingTarget("customer");
+              }}
+            >
+              {routeLoadingTarget === "customer" ? (
+                <span className="inline-flex items-center gap-2">
+                  <ThreeDotSpinner />
+                  Opening Customer
+                </span>
+              ) : (
+                "Customer View"
+              )}
             </Link>
           </div>
         </section>
@@ -478,8 +529,24 @@ export default function RestroLoginPage() {
                   }}
                 />
 
-                <button type="submit" className="food-btn w-full" disabled={isSigningIn}>
-                  {isSigningIn ? "Signing In..." : "Sign In To Dashboard"}
+                <button
+                  type="submit"
+                  className="food-btn w-full"
+                  disabled={isSigningIn || routeLoadingTarget === "dashboard"}
+                >
+                  {routeLoadingTarget === "dashboard" ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ThreeDotSpinner />
+                      Opening Dashboard
+                    </span>
+                  ) : isSigningIn ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ThreeDotSpinner />
+                      Signing In
+                    </span>
+                  ) : (
+                    "Sign In To Dashboard"
+                  )}
                 </button>
               </form>
             </article>
