@@ -653,6 +653,15 @@ function RestroDashboardContent() {
     const selectedCategoryName = categories.find(
       (category) => category.id === itemForm.categoryId
     )?.name;
+    const existingEditingItem = editingItemId
+      ? items.find((item) => item.id === editingItemId)
+      : null;
+    const shouldSkipVariantAddonSync =
+      editingItemId !== null &&
+      cleanedVariants.length === 0 &&
+      cleanedAddons.length === 0 &&
+      (existingEditingItem?.variants.length ?? 0) === 0 &&
+      (existingEditingItem?.addons.length ?? 0) === 0;
 
     try {
       setIsSavingItem(true);
@@ -669,6 +678,7 @@ function RestroDashboardContent() {
           restaurantId,
           categoryId: itemForm.categoryId,
           categoryName: selectedCategoryName ?? null,
+          skipVariantAddonSync: shouldSkipVariantAddonSync,
           name: itemForm.name,
           description: itemForm.description,
           imageUrl: itemForm.imageUrl,

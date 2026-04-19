@@ -119,6 +119,7 @@ export interface ItemPayload {
   restaurantId: number;
   categoryId: number;
   categoryName: string | null;
+  skipVariantAddonSync: boolean;
   name: string;
   description: string | null;
   imageUrl: string | null;
@@ -603,6 +604,7 @@ export function parseItemPayload(body: unknown): ItemPayload {
     restaurantId: toInteger(value.restaurantId, "restaurantId", { min: 1 }),
     categoryId: toInteger(value.categoryId, "categoryId", { min: 1 }),
     categoryName: toTrimmedString(value.categoryName, 120),
+    skipVariantAddonSync: toBoolean(value.skipVariantAddonSync),
     name: toRequiredString(value.name, "Item name", 150),
     description: toTrimmedString(value.description, 1000),
     imageUrl: toTrimmedString(value.imageUrl, 500),
@@ -1158,6 +1160,53 @@ export async function updateItem(
   itemId: number,
   payload: ItemPayload
 ): Promise<Item> {
+  if (
+    payload.skipVariantAddonSync &&
+    payload.variants.length === 0 &&
+    payload.addons.length === 0
+  ) {
+    const result = await execute(
+      `UPDATE items
+       SET category_id = ?,
+           name = ?,
+           description = ?,
+           image_url = ?,
+           base_price = ?,
+           stock_qty = ?,
+           sku = ?,
+           is_veg = ?,
+           is_available = ?,
+           offer_title = ?,
+           offer_discount_percent = ?,
+           offer_start_at = ?,
+           offer_end_at = ?
+       WHERE id = ? AND restaurant_id = ?`,
+      [
+        payload.categoryId,
+        payload.name,
+        payload.description,
+        payload.imageUrl,
+        payload.basePrice,
+        payload.stockQty,
+        payload.sku,
+        payload.isVeg ? 1 : 0,
+        payload.isAvailable ? 1 : 0,
+        payload.offerTitle,
+        payload.offerDiscountPercent,
+        payload.offerStartAt,
+        payload.offerEndAt,
+        itemId,
+        payload.restaurantId,
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new InputError("Item not found.", 404);
+    }
+
+    return buildItemSnapshot(itemId, payload, null);
+  }
+
   await withTransaction(async (connection) => {
     const [result] = await connection.execute<ResultSetHeader>(
       `UPDATE items
